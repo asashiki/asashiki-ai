@@ -1,0 +1,29 @@
+{
+  "name": "asashiki-ai-foundation",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n public,admin,core,mcp -c cyan,magenta,green,yellow \"pnpm --filter @asashiki/public-web dev\" \"pnpm --filter @asashiki/admin-web dev\" \"pnpm --filter @asashiki/core-api dev\" \"pnpm --filter @asashiki/mcp-gateway dev\"",
+    "dev:web": "concurrently -n public,admin -c cyan,magenta \"pnpm --filter @asashiki/public-web dev\" \"pnpm --filter @asashiki/admin-web dev\"",
+    "dev:services": "concurrently -n core,mcp -c green,yellow \"pnpm --filter @asashiki/core-api dev\" \"pnpm --filter @asashiki/mcp-gateway dev\"",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:init": "pnpm --filter @asashiki/core-api db:init",
+    "db:seed": "pnpm --filter @asashiki/core-api db:seed",
+    "smoke": "pnpm --filter @asashiki/core-api smoke && pnpm --filter @asashiki/mcp-gateway smoke",
+    "test": "pnpm --filter @asashiki/core-api test && pnpm --filter @asashiki/mcp-gateway test",
+    "public:snapshot": "pnpm --filter @asashiki/core-api public:snapshot"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "concurrently": "^9.2.1",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  }
+}

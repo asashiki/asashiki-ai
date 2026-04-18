@@ -1,0 +1,121 @@
+# Asashiki AI Foundation
+
+当前仓库已进入 Milestone 6：基础部署手册、Docker Compose / PM2 样例、Cloudflare Tunnel 样例与子域规划已补齐，可支撑首轮部署预演。
+
+## 当前结构
+
+```text
+apps/
+  admin-web/
+  core-api/
+  mcp-gateway/
+  public-web/
+packages/
+  config/
+  schemas/
+asashiki-ai-foundation-kit/
+  Prompt.md
+  Plan.md
+  Documentation.md
+```
+
+`asashiki-ai-foundation-kit/` 保留为规划与决策文档区；实际代码从仓库根目录的 `apps/` 与 `packages/` 开始。
+
+## 快速开始
+
+1. 安装依赖
+
+   ```bash
+   pnpm install
+   ```
+
+2. 为 Node 服务复制根环境变量模板
+
+   ```powershell
+   Copy-Item ".env.example" ".env"
+   ```
+
+3. 如需覆盖前端默认 API 地址，可分别复制：
+
+   ```powershell
+   Copy-Item "apps/public-web/.env.example" "apps/public-web/.env"
+   Copy-Item "apps/admin-web/.env.example" "apps/admin-web/.env"
+   ```
+
+4. 启动前端聚合进程
+
+   ```bash
+   pnpm dev:web
+   ```
+
+5. 启动服务聚合进程
+
+   ```bash
+   pnpm dev:services
+   ```
+
+也可以直接运行 `pnpm dev` 一次启动四个进程。
+
+## 默认端口
+
+- Public Web: `3000`
+- Admin Web: `3001`
+- Core API: `4100`
+- MCP Gateway: `4200`
+
+## Admin Dashboard 当前能力
+
+- `Overview`: 查看模块总览、关键指标和最近系统痕迹
+- `Journals`: 查看 drafts / entries，并通过表单创建新的 journal draft
+- `Connectors`: 查看连接器状态、能力和暴露等级
+- `Health`: 查看最新健康摘要与快照
+- `Activity`: 查看 Core API / MCP Gateway 运行状态与最近审计事件
+
+## Public Status 复用入口
+
+- 当前静态组件配置文件: [apps/public-web/src/public-status.config.ts](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/public-web/src/public-status.config.ts)
+- 当前可复用组件包: [packages/public-status-widget](/C:/Users/Hey/Desktop/asashiki-ai-foundation/packages/public-status-widget)
+- 当前 API snapshot: [apps/core-api/snapshots/public-status.snapshot.json](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/core-api/snapshots/public-status.snapshot.json)
+- 静态前端接入说明: [08-public-status-widget.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/docs/08-public-status-widget.md)
+
+## MCP Gateway 当前能力
+
+- `read_profile_summary`
+- `get_recent_context`
+- `create_journal_draft`
+- `get_health_summary`
+- `get_connector_status`
+
+当前真实 MCP 服务入口位于 `http://127.0.0.1:4200/mcp`，本地可通过 Streamable HTTP MCP client 连接。
+
+## 部署资产
+
+- Docker Compose 样例: [infra/docker/compose.yaml](/C:/Users/Hey/Desktop/asashiki-ai-foundation/infra/docker/compose.yaml)
+- Docker runtime image: [infra/docker/Dockerfile](/C:/Users/Hey/Desktop/asashiki-ai-foundation/infra/docker/Dockerfile)
+- PM2 样例: [infra/pm2/ecosystem.config.cjs](/C:/Users/Hey/Desktop/asashiki-ai-foundation/infra/pm2/ecosystem.config.cjs)
+- Cloudflare Tunnel 样例: [infra/cloudflare/tunnel.config.example.yml](/C:/Users/Hey/Desktop/asashiki-ai-foundation/infra/cloudflare/tunnel.config.example.yml)
+- 部署手册: [09-deployment-basics.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/docs/09-deployment-basics.md)
+- 生产环境模板:
+  - [.env.production.example](/C:/Users/Hey/Desktop/asashiki-ai-foundation/.env.production.example)
+  - [apps/public-web/.env.production.example](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/public-web/.env.production.example)
+  - [apps/admin-web/.env.production.example](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/admin-web/.env.production.example)
+
+## 数据初始化
+
+```bash
+pnpm db:init
+pnpm db:seed
+```
+
+## 验证命令
+
+```bash
+pnpm install
+pnpm db:init
+pnpm db:seed
+pnpm build
+pnpm typecheck
+pnpm test
+pnpm smoke
+pnpm public:snapshot
+```

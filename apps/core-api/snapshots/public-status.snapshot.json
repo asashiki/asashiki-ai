@@ -1,0 +1,45 @@
+{
+  "status": {
+    "status": "degraded",
+    "message": "Core services are reachable with partial integration pending.",
+    "updatedAt": "2026-04-18T15:13:28.842Z",
+    "cards": [
+      {
+        "id": "public-surface",
+        "title": "Public Surface",
+        "value": "Read-only API",
+        "visibility": "public"
+      },
+      {
+        "id": "connector-availability",
+        "title": "Connector Availability",
+        "value": "1/2",
+        "visibility": "public"
+      },
+      {
+        "id": "privacy-boundary",
+        "title": "Private Boundary",
+        "value": "Personal data protected",
+        "visibility": "public"
+      },
+      {
+        "id": "update-path",
+        "title": "Update Path",
+        "value": "Core API governed",
+        "visibility": "public"
+      }
+    ]
+  },
+  "widgetConfig": {
+    "component": "public-status-widget",
+    "title": "Asashiki Public Status",
+    "subtitle": "This widget is intentionally driven by a narrow public API so it can move between static frontends without exposing private data.",
+    "statusEndpoint": "/public/status",
+    "cardsEndpoint": "/public/cards",
+    "pollingIntervalMs": 30000,
+    "maxCards": 3,
+    "theme": "linen-signal",
+    "emptyMessage": "Public status is temporarily unavailable.",
+    "docsLabel": "Static Frontend Config"
+  }
+}

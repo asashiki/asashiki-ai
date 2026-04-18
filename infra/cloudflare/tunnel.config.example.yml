@@ -1,0 +1,9 @@
+tunnel: <TUNNEL_UUID>
+credentials-file: /etc/cloudflared/<TUNNEL_UUID>.json
+
+ingress:
+  - hostname: api-internal.example.com
+    service: http://127.0.0.1:4100
+  - hostname: mcp.example.com
+    service: http://127.0.0.1:4200
+  - service: http_status:404

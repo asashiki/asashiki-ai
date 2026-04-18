@@ -1,0 +1,62 @@
+services:
+  core-api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: runtime
+    command: ["pnpm", "--filter", "@asashiki/core-api", "start"]
+    env_file:
+      - ../../.env.production
+    environment:
+      CORE_API_HOST: 0.0.0.0
+      CORE_API_PORT: 4100
+      CORE_API_DB_PATH: /data/core-api.sqlite
+    ports:
+      - "127.0.0.1:4100:4100"
+    volumes:
+      - core_api_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4100/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  mcp-gateway:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+      target: runtime
+    command: ["pnpm", "--filter", "@asashiki/mcp-gateway", "start"]
+    env_file:
+      - ../../.env.production
+    environment:
+      MCP_GATEWAY_HOST: 0.0.0.0
+      MCP_GATEWAY_PORT: 4200
+      MCP_CORE_API_BASE_URL: http://core-api:4100
+    ports:
+      - "127.0.0.1:4200:4200"
+    depends_on:
+      core-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4200/health').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  core_api_data:

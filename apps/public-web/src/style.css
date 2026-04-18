@@ -1,0 +1,148 @@
+:root {
+  --bg: #f0e7d7;
+  --ink: #1d1814;
+  --muted: #6d5a4a;
+  --line: rgba(29, 24, 20, 0.14);
+  --accent: #9c4528;
+  --panel: rgba(255, 251, 245, 0.82);
+  color-scheme: light;
+  font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at left top, rgba(156, 69, 40, 0.18), transparent 22%),
+    linear-gradient(180deg, #f9f3ea 0%, var(--bg) 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.public-shell {
+  min-height: 100vh;
+  padding: 44px 22px 60px;
+}
+
+.public-hero,
+.public-layout {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.public-hero {
+  margin-bottom: 24px;
+}
+
+.public-hero__eyebrow,
+.public-panel__header p {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.public-hero h1,
+.public-panel__header h2 {
+  margin: 0;
+  font-family: "Palatino Linotype", Baskerville, Georgia, serif;
+  line-height: 0.95;
+}
+
+.public-hero h1 {
+  font-size: clamp(2.4rem, 6vw, 5rem);
+  max-width: 880px;
+}
+
+.public-hero__lead {
+  max-width: 760px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.public-layout {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 1.15fr 0.85fr;
+}
+
+.public-panel {
+  padding: 24px;
+  border-radius: 30px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 28px 60px rgba(61, 37, 23, 0.12);
+}
+
+.public-panel--config {
+  background:
+    linear-gradient(180deg, rgba(255, 250, 244, 0.96), rgba(237, 225, 205, 0.86));
+}
+
+.public-panel__header {
+  margin-bottom: 16px;
+}
+
+.public-panel__header h2 {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.config-list {
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.config-list li {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(29, 24, 20, 0.08);
+}
+
+.config-list li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.config-list strong {
+  font-family: "Palatino Linotype", Baskerville, Georgia, serif;
+}
+
+.config-list span {
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.config-code {
+  margin: 0;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(33, 26, 22, 0.95);
+  color: #f6ecdf;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.public-fallback {
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px dashed rgba(156, 69, 40, 0.32);
+  display: grid;
+  gap: 8px;
+}
+
+.public-fallback span {
+  color: var(--muted);
+}
+
+@media (max-width: 960px) {
+  .public-layout {
+    grid-template-columns: 1fr;
+  }
+}

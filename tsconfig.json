@@ -1,0 +1,26 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/schemas"
+    },
+    {
+      "path": "./packages/public-status-widget"
+    },
+    {
+      "path": "./apps/public-web"
+    },
+    {
+      "path": "./apps/admin-web"
+    },
+    {
+      "path": "./apps/core-api"
+    },
+    {
+      "path": "./apps/mcp-gateway"
+    }
+  ]
+}

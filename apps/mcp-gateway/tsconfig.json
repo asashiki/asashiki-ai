@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": [
+    "src/app.ts",
+    "src/core-api-client.ts",
+    "src/mcp.ts",
+    "src/server.ts"
+  ]
+}
