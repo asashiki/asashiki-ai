@@ -12,6 +12,8 @@ import {
   journalDraftSchema,
   journalEntrySchema,
   profileSummarySchema,
+  profileSummaryInputSchema,
+  profileSummarySavedSchema,
   recentContextSchema,
   publicStatusCardSchema,
   publicStatusSchema,
@@ -54,6 +56,80 @@ export function createRepository(database: DatabaseSync) {
         displayName: row?.display_name ?? "Asashiki",
         summary: row?.summary ?? "Profile summary not initialized.",
         topPreferences: parseJsonArray(row?.preferences_json)
+      });
+    },
+
+    updateProfileSummary(input: unknown) {
+      const payload = profileSummaryInputSchema.parse(input);
+      const updatedAt = new Date().toISOString();
+      const existing = database.prepare(`
+        SELECT id
+        FROM profile_summary
+        ORDER BY datetime(updated_at) DESC
+        LIMIT 1
+      `).get() as JsonRow | undefined;
+
+      const profileId =
+        typeof existing?.id === "string" ? existing.id : "profile-main";
+
+      if (existing) {
+        database.prepare(`
+          UPDATE profile_summary
+          SET display_name = ?, summary = ?, preferences_json = ?, updated_at = ?
+          WHERE id = ?
+        `).run(
+          payload.displayName,
+          payload.summary,
+          JSON.stringify(payload.topPreferences),
+          updatedAt,
+          profileId
+        );
+      } else {
+        database.prepare(`
+          INSERT INTO profile_summary (
+            id,
+            display_name,
+            summary,
+            preferences_json,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?)
+        `).run(
+          profileId,
+          payload.displayName,
+          payload.summary,
+          JSON.stringify(payload.topPreferences),
+          updatedAt
+        );
+      }
+
+      database.prepare(`
+        INSERT INTO audit_events (
+          id,
+          actor,
+          action,
+          target_type,
+          target_id,
+          metadata_json,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        "admin-dashboard",
+        "update_profile_summary",
+        "profile_summary",
+        profileId,
+        JSON.stringify({
+          displayName: payload.displayName,
+          topPreferencesCount: payload.topPreferences.length
+        }),
+        updatedAt
+      );
+
+      return profileSummarySavedSchema.parse({
+        displayName: payload.displayName,
+        summary: payload.summary,
+        topPreferences: payload.topPreferences,
+        updatedAt
       });
     },
 

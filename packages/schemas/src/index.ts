@@ -89,6 +89,20 @@ export const profileSummarySchema = z.object({
 
 export type ProfileSummary = z.infer<typeof profileSummarySchema>;
 
+export const profileSummaryInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(80),
+  summary: z.string().trim().min(1).max(1200),
+  topPreferences: z.array(z.string().trim().min(1).max(80)).max(5)
+});
+
+export type ProfileSummaryInput = z.infer<typeof profileSummaryInputSchema>;
+
+export const profileSummarySavedSchema = profileSummarySchema.extend({
+  updatedAt: z.string().datetime()
+});
+
+export type ProfileSummarySaved = z.infer<typeof profileSummarySavedSchema>;
+
 export const journalDraftSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1),
@@ -151,6 +165,27 @@ export const connectorSummarySchema = z.object({
 });
 
 export type ConnectorSummary = z.infer<typeof connectorSummarySchema>;
+
+export const mcpToolCatalogItemSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().min(1),
+  readOnlyHint: z.boolean()
+});
+
+export const mcpToolCatalogSchema = z.array(mcpToolCatalogItemSchema).max(16);
+
+export type McpToolCatalogItem = z.infer<typeof mcpToolCatalogItemSchema>;
+
+export const mcpToolTestResultSchema = z.object({
+  toolId: z.string().min(1),
+  ok: z.boolean(),
+  summary: z.string().min(1),
+  preview: z.string().nullable(),
+  executedAt: z.string().datetime()
+});
+
+export type McpToolTestResult = z.infer<typeof mcpToolTestResultSchema>;
 
 export const healthSummarySchema = z.object({
   restingHeartRate: z.number().int().positive().nullable(),

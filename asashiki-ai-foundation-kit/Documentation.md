@@ -2,9 +2,9 @@
 
 ## Current status
 
-- Project phase: Milestone 7 completed; Milestone 8 execution plan prepared
+- Project phase: Milestone 8 first execution slice completed locally
 - Active milestone: Milestone 8
-- Code status: next phase now targets admin-first console work and the first real connector pilot
+- Code status: admin-web has been rebuilt into an admin-first console shell with profile editing and MCP test panels
 - Deployment status: VPS + domain + Claude MCP path verified; public-web remains local-preview only
 
 ## Decisions frozen so far
@@ -321,3 +321,36 @@ After each milestone, append:
   - admin local smoke
   - connector/MCP test-page smoke
   - Supabase pilot query smoke
+
+## Milestone 8 result (slice 1)
+
+- Summary
+  - Rebuilt `admin-web` into a calmer admin-first control room with sidebar, top status strip, card-based content areas, and graceful partial-failure states.
+  - Added profile editing through `PUT /api/profile/summary`, so core text data is no longer read-only seed data.
+  - Added MCP helper endpoints for the control room: tool catalog plus per-tool smoke execution.
+  - Added an MCP Tools view so current tools can be tested from the UI instead of only from terminal workflows.
+- Files changed
+  - `apps/admin-web/src/main.ts`
+  - `apps/admin-web/src/style.css`
+  - `apps/core-api/src/app.ts`
+  - `apps/core-api/src/repository.ts`
+  - `apps/core-api/src/core-api.test.ts`
+  - `apps/mcp-gateway/src/app.ts`
+  - `apps/mcp-gateway/src/mcp.ts`
+  - `packages/schemas/src/index.ts`
+  - `README.md`
+  - `asashiki-ai-foundation-kit/docs/04-api-and-mcp-surface.md`
+  - `asashiki-ai-foundation-kit/Documentation.md`
+- Validation run
+  - `pnpm --filter @asashiki/admin-web build`
+  - `pnpm --filter @asashiki/admin-web typecheck`
+  - `pnpm --filter @asashiki/core-api test`
+  - `pnpm --filter @asashiki/mcp-gateway test`
+- Problems found
+  - The first real external connector pilot is still pending; current connector data remains the seeded registry.
+  - Core API still uses Node 24 `node:sqlite`, so experimental warnings remain in service tests.
+- Decisions taken
+  - Keep the first Milestone 8 slice focused on operator usability rather than jumping straight to Supabase integration.
+  - Let `admin-web` call dedicated helper endpoints for MCP smoke instead of trying to run browser-native Streamable HTTP sessions directly.
+- Next milestone readiness
+  - The next Milestone 8 slice can now focus on Connector Center deepening and the Supabase time-log pilot.

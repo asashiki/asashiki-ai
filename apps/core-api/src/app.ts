@@ -75,6 +75,9 @@ export async function createCoreApiApp(options?: {
   );
 
   server.get("/api/profile/summary", async () => repository.getProfileSummary());
+  server.put("/api/profile/summary", async (request) =>
+    repository.updateProfileSummary(request.body)
+  );
   server.get("/api/context/recent", async () => repository.getRecentContext());
   server.get("/api/journals", async () => repository.listJournals());
   server.post("/api/journals/drafts", async (request, reply) => {

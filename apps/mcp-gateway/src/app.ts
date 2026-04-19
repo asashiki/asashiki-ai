@@ -4,7 +4,12 @@ import { createServiceHealth, serviceManifestSchema } from "@asashiki/schemas";
 import { parseServiceEnv } from "@asashiki/config";
 import { z } from "zod";
 import { createCoreApiClient } from "./core-api-client.js";
-import { createMcpGatewayServer } from "./mcp.js";
+import {
+  createMcpGatewayServer,
+  mcpToolCatalog,
+  mcpToolIdSchema,
+  runMcpToolSmokeTest
+} from "./mcp.js";
 
 export const mcpGatewayEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -59,14 +64,18 @@ export async function createMcpGatewayApp(options?: {
 
   server.get("/tools", async () => ({
     upstream: env.MCP_CORE_API_BASE_URL,
-    tools: [
-      "read_profile_summary",
-      "get_recent_context",
-      "create_journal_draft",
-      "get_health_summary",
-      "get_connector_status"
-    ]
+    tools: mcpToolCatalog.map((tool) => tool.id)
   }));
+
+  server.get("/tools/catalog", async () => ({
+    upstream: env.MCP_CORE_API_BASE_URL,
+    tools: mcpToolCatalog
+  }));
+
+  server.post("/tools/:toolId/test", async (request) => {
+    const params = z.object({ toolId: mcpToolIdSchema }).parse(request.params);
+    return runMcpToolSmokeTest(client, params.toolId);
+  });
 
   server.post("/mcp", async (request, reply) => {
     const transport = new StreamableHTTPServerTransport({

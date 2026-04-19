@@ -65,11 +65,14 @@ asashiki-ai-foundation-kit/
 
 ## Admin Dashboard 当前能力
 
-- `Overview`: 查看模块总览、关键指标和最近系统痕迹
+- `Overview`: 查看系统总览、数据流完整度和最近注意事项
+- `Profile`: 直接在控制台编辑 profile summary 与 top preferences
 - `Journals`: 查看 drafts / entries，并通过表单创建新的 journal draft
-- `Connectors`: 查看连接器状态、能力和暴露等级
-- `Health`: 查看最新健康摘要与快照
-- `Activity`: 查看 Core API / MCP Gateway 运行状态与最近审计事件
+- `Connectors`: 查看连接器状态、能力、暴露等级与最近错误
+- `MCP Tools`: 读取工具目录并逐个执行 smoke test
+- `Activity`: 查看 Core API / MCP Gateway 运行状态、审计事件和数据面完整度
+
+当前 `admin-web` 已支持“局部失败可见”：当服务抽风、某几项数据取不到时，控制台仍会保留页面结构，并明确提示哪些数据面不可用。
 
 ## Public Status 复用入口
 
@@ -87,6 +90,10 @@ asashiki-ai-foundation-kit/
 - `get_connector_status`
 
 当前真实 MCP 服务入口位于 `http://127.0.0.1:4200/mcp`，本地可通过 Streamable HTTP MCP client 连接。
+同时也提供了控制台专用的 HTTP 辅助入口：
+
+- `GET /tools/catalog`
+- `POST /tools/:toolId/test`
 
 ## 部署资产
 

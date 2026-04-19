@@ -27,6 +27,25 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
     });
     assert.equal(profile.statusCode, 200);
 
+    const updatedProfile = await server.inject({
+      method: "PUT",
+      url: "/api/profile/summary",
+      payload: {
+        displayName: "Asashiki Console",
+        summary: "Profile data can now be edited through the admin control room.",
+        topPreferences: ["quiet UI", "journal-first", "agent-safe tools"]
+      }
+    });
+    assert.equal(updatedProfile.statusCode, 200);
+    assert.equal(updatedProfile.json().displayName, "Asashiki Console");
+
+    const profileAfterUpdate = await server.inject({
+      method: "GET",
+      url: "/api/profile/summary"
+    });
+    assert.equal(profileAfterUpdate.statusCode, 200);
+    assert.equal(profileAfterUpdate.json().displayName, "Asashiki Console");
+
     const journals = await server.inject({
       method: "GET",
       url: "/api/journals"
