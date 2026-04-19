@@ -586,6 +586,39 @@ button {
   resize: vertical;
 }
 
+.code-input {
+  min-height: 120px;
+  font-family:
+    "IBM Plex Mono",
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.code-block {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(34, 39, 37, 0.06);
+  color: var(--ink);
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family:
+    "IBM Plex Mono",
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+  font-size: 0.82rem;
+}
+
+.stack-panel {
+  display: grid;
+  gap: 18px;
+}
+
 .profile-preview h4 {
   margin: 0 0 12px;
   font-size: 2rem;

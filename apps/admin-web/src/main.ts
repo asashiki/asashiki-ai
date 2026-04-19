@@ -11,6 +11,8 @@ import {
   profileSummaryInputSchema,
   profileSummarySavedSchema,
   profileSummarySchema,
+  remoteMcpServerSchema,
+  remoteMcpToolInvokeResultSchema,
   serviceHealthSchema,
   timeLogLookupResultSchema,
   timeLogRecentSchema
@@ -25,6 +27,8 @@ import type {
   McpToolCatalogItem,
   McpToolTestResult,
   ProfileSummary,
+  RemoteMcpServer,
+  RemoteMcpToolInvokeResult,
   ServiceHealth,
   TimeLogLookupResult,
   TimeLogRecent
@@ -58,6 +62,7 @@ type DashboardResources = {
   latestHealth: Resource<HealthSnapshot>;
   connectors: Resource<Connector[]>;
   connectorSummary: Resource<ConnectorSummary>;
+  remoteMcpServers: Resource<RemoteMcpServer[]>;
   timeLogRecent: Resource<TimeLogRecent>;
   recentAudit: Resource<AuditEvent[]>;
   toolCatalog: Resource<McpToolCatalogItem[]>;
@@ -100,6 +105,14 @@ type AppState = {
       result: McpToolTestResult | null;
     }
   >;
+  remoteToolDrafts: Record<string, string>;
+  remoteToolRuns: Record<
+    string,
+    {
+      pending: boolean;
+      result: RemoteMcpToolInvokeResult | null;
+    }
+  >;
   timeLogQueryAt: string;
   timeLogLookup: {
     pending: boolean;
@@ -140,6 +153,8 @@ const state: AppState = {
     content: ""
   },
   toolRuns: {},
+  remoteToolDrafts: {},
+  remoteToolRuns: {},
   timeLogQueryAt: toLocalDatetimeValue(new Date()),
   timeLogLookup: {
     pending: false,
@@ -316,6 +331,7 @@ function formatResourceName(key: string) {
     latestHealth: "最新健康快照",
     connectors: "连接器列表",
     connectorSummary: "连接摘要",
+    remoteMcpServers: "上游 MCP 服务器",
     timeLogRecent: "Supabase 时间日志预览",
     recentAudit: "最近审计事件",
     toolCatalog: "MCP 工具目录"
@@ -426,6 +442,7 @@ async function loadDashboardResources(): Promise<DashboardResources> {
     latestHealth,
     connectors,
     connectorSummary,
+    remoteMcpServers,
     timeLogRecent,
     recentAudit,
     toolCatalog
@@ -478,6 +495,13 @@ async function loadDashboardResources(): Promise<DashboardResources> {
         "连接摘要"
       )
     ),
+    loadResource("上游 MCP 服务器", () =>
+      loadJson(
+        `${coreApiBaseUrl}/api/remote-mcp/servers`,
+        remoteMcpServerSchema.array(),
+        "上游 MCP 服务器"
+      )
+    ),
     loadResource("Supabase 时间日志预览", () =>
       loadJson(
         `${coreApiBaseUrl}/api/time-log/recent?limit=5`,
@@ -515,6 +539,7 @@ async function loadDashboardResources(): Promise<DashboardResources> {
     latestHealth,
     connectors,
     connectorSummary,
+    remoteMcpServers,
     timeLogRecent,
     recentAudit,
     toolCatalog
@@ -624,6 +649,28 @@ function renderTimeLogLookupResult(result: TimeLogLookupResult) {
   `;
 }
 
+function getRemoteToolKey(serverId: string, toolName: string) {
+  return `${serverId}::${toolName}`;
+}
+
+function getRemoteToolDraft(serverId: string, toolName: string) {
+  return state.remoteToolDrafts[getRemoteToolKey(serverId, toolName)] ?? "{}";
+}
+
+function renderRemoteToolResult(result: RemoteMcpToolInvokeResult) {
+  return `
+    <div class="inline-alert ${result.ok ? "inline-alert--success" : "inline-alert--error"}">
+      <strong>${escapeHtml(result.summary)}</strong>
+      ${
+        result.preview
+          ? `<pre class="code-block"><code>${escapeHtml(result.preview)}</code></pre>`
+          : ""
+      }
+      <small>${escapeHtml(formatDateTime(result.executedAt))}</small>
+    </div>
+  `;
+}
+
 function renderEmptyState(title: string, description: string) {
   return `
     <section class="empty-state">
@@ -669,6 +716,7 @@ function renderTopStatus(resources: DashboardResources | null) {
   const mcpHealth = asData(resources.mcpHealth);
   const journals = asData(resources.journals);
   const connectorSummary = asData(resources.connectorSummary);
+  const remoteMcpServers = asData(resources.remoteMcpServers);
   const timeLogRecent = asData(resources.timeLogRecent);
   const toolCatalog = asData(resources.toolCatalog);
 
@@ -692,6 +740,14 @@ function renderTopStatus(resources: DashboardResources | null) {
           ? `在线连接 ${connectorSummary.online}/${connectorSummary.total}`
           : "连接状态暂缺",
         connectorSummary ? "neutral" : "warn"
+      )}
+      ${renderBadge(
+        remoteMcpServers
+          ? `上游 MCP ${
+              remoteMcpServers.filter((server) => server.status === "online").length
+            }/${remoteMcpServers.length}`
+          : "上游 MCP 暂缺",
+        remoteMcpServers ? "neutral" : "warn"
       )}
       ${renderBadge(
         timeLogRecent
@@ -1097,53 +1153,55 @@ function renderJournals(resources: DashboardResources) {
 function renderConnectors(resources: DashboardResources) {
   const connectors = asData(resources.connectors);
   const summary = asData(resources.connectorSummary);
+  const remoteMcpServers = asData(resources.remoteMcpServers);
   const timeLogRecent = asData(resources.timeLogRecent);
 
   return `
     <section class="panel">
       <div class="panel__header">
         <p>页面说明</p>
-        <h3>这里不是 agent 在线列表</h3>
+        <h3>这里看的是“系统接了什么”，不是“谁在线”</h3>
       </div>
       <p class="panel__copy">
-        这里展示的是系统里已经登记的连接器或数据通道，例如后端服务、外部数据源、后续要接入的 Supabase 或其他同步器。
-        它更像“连接登记中心”，不是 Claude / Codex 当前在线人数。
+        这一页负责回答三件事：系统里登记了哪些连接、有哪些上游 MCP 已经接通、这些工具现在能不能跑。
+        以后大多数新能力都会先在这里出现，再决定要不要做成更具体的业务页面。
       </p>
     </section>
     <section class="metric-grid">
       ${renderMetricCard(
-        "已登记",
+        "已登记连接",
         summary ? `${summary.total}` : "—",
-        summary ? "已登记连接数" : "摘要暂缺",
+        summary ? "含内置连接与上游 MCP" : "摘要暂缺",
         "neutral"
       )}
       ${renderMetricCard(
         "在线",
         summary ? `${summary.online}` : "—",
-        summary ? "当前正常在线" : "摘要暂缺",
+        summary ? "当前可正常读取" : "摘要暂缺",
         summary && summary.online > 0 ? "good" : "warn"
       )}
       ${renderMetricCard(
-        "需关注",
-        summary ? `${summary.degraded}` : "—",
-        summary ? "需要人工关注" : "摘要暂缺",
-        summary && summary.degraded === 0 ? "neutral" : "warn"
+        "上游 MCP",
+        remoteMcpServers ? `${remoteMcpServers.length}` : "—",
+        remoteMcpServers ? "当前已配置的远程 MCP" : "暂未配置",
+        remoteMcpServers && remoteMcpServers.length > 0 ? "neutral" : "warn"
       )}
       ${renderMetricCard(
         "离线",
         summary ? `${summary.offline}` : "—",
-        summary ? "当前不可用" : "摘要暂缺",
+        summary ? "当前不可访问" : "摘要暂缺",
         summary && summary.offline === 0 ? "good" : "warn"
       )}
     </section>
     <section class="content-grid content-grid--profile">
       <article class="panel panel--form">
         <div class="panel__header">
-          <p>Supabase 试点</p>
+          <p>业务试点</p>
           <h3>时间日志查询测试</h3>
         </div>
         <p class="panel__copy">
-          这里直接测试“某个时刻我在做什么”这条真实链路。输入一个时间点后，控制台会通过 Core API 去查询 Supabase 时间日志。
+          这一块保留的是当前业务试点。它还是一个专用读取页，用来回答“某个时刻我在做什么”。
+          通用的上游 MCP 列表和工具测试在下面。
         </p>
         <form id="time-log-form" class="editor-form">
           <label>
@@ -1198,9 +1256,124 @@ function renderConnectors(resources: DashboardResources) {
                   ? resources.timeLogRecent.message
                   : "当前还没有拿到时间日志样本。"
               )
-        }
+          }
       </article>
     </section>
+    <section class="panel">
+      <div class="panel__header">
+        <p>上游 MCP</p>
+        <h3>已接入的远程 MCP 服务器</h3>
+      </div>
+      <p class="panel__copy">
+        这里展示的是项目后端自己去连接的远程 MCP。
+        现阶段由 Codex 帮你登记配置，控制台先负责查看状态、浏览工具和做安全测试。
+      </p>
+    </section>
+    ${
+      remoteMcpServers
+        ? remoteMcpServers.length > 0
+          ? `
+            <section class="stack-panel">
+              ${remoteMcpServers
+                .map((server) => `
+                  <article class="panel connector-card connector-card--${server.status}">
+                    <div class="connector-card__topline">
+                      ${renderBadge(
+                        server.status === "online" ? "在线" : server.status === "degraded" ? "降级" : "离线",
+                        server.status === "online"
+                          ? "good"
+                          : server.status === "degraded"
+                            ? "warn"
+                            : "bad"
+                      )}
+                      <span>${escapeHtml(server.authMode === "bearer-env" ? "Bearer Token" : "No Auth")}</span>
+                    </div>
+                    <h3>${escapeHtml(server.name)}</h3>
+                    <p>${escapeHtml(server.description)}</p>
+                    <small>${escapeHtml(server.url)}</small>
+                    <ul class="tag-row">
+                      <li>工具 ${server.toolCount}</li>
+                      <li>只读 ${server.readOnlyToolCount}</li>
+                      <li>写入 ${server.writeToolCount}</li>
+                    </ul>
+                    ${
+                      server.lastError
+                        ? `<div class="inline-alert inline-alert--error">${escapeHtml(server.lastError)}</div>`
+                        : `<div class="inline-alert">最近成功连接：${escapeHtml(formatDateTime(server.lastSuccessAt))}</div>`
+                    }
+                    ${
+                      server.tools.length > 0
+                        ? `
+                          <div class="tool-grid">
+                            ${server.tools
+                              .map((tool) => {
+                                const key = getRemoteToolKey(server.id, tool.name);
+                                const runState = state.remoteToolRuns[key];
+
+                                return `
+                                  <article class="tool-card">
+                                    <div class="tool-card__topline">
+                                      ${renderBadge(tool.readOnlyHint ? "只读" : "写入", tool.readOnlyHint ? "neutral" : "warn")}
+                                      <span>${escapeHtml(tool.name)}</span>
+                                    </div>
+                                    <h3>${escapeHtml(tool.title ?? tool.name)}</h3>
+                                    <p>${escapeHtml(tool.description ?? "这个工具没有提供额外描述。")}</p>
+                                    <small>
+                                      ${
+                                        tool.requiredArguments.length > 0
+                                          ? `必填参数：${escapeHtml(tool.requiredArguments.join(", "))}`
+                                          : "无必填参数，可直接测试。"
+                                      }
+                                    </small>
+                                    <label>
+                                      <span>JSON 参数</span>
+                                      <textarea
+                                        class="code-input"
+                                        data-remote-tool-input="${escapeHtml(key)}"
+                                        rows="5"
+                                      >${escapeHtml(getRemoteToolDraft(server.id, tool.name))}</textarea>
+                                    </label>
+                                    <div class="panel__actions panel__actions--compact">
+                                      <button
+                                        class="button button--ghost"
+                                        type="button"
+                                        data-remote-tool-run="${escapeHtml(key)}"
+                                        data-remote-server-id="${escapeHtml(server.id)}"
+                                        data-remote-tool-name="${escapeHtml(tool.name)}"
+                                        ${runState?.pending ? "disabled" : ""}
+                                      >
+                                        ${runState?.pending ? "测试中..." : "测试这个工具"}
+                                      </button>
+                                    </div>
+                                    ${
+                                      runState?.result
+                                        ? renderRemoteToolResult(runState.result)
+                                        : `<div class="inline-alert"><span>还没有执行测试。</span></div>`
+                                    }
+                                  </article>
+                                `;
+                              })
+                              .join("")}
+                          </div>
+                        `
+                        : `<div class="inline-alert"><span>当前没有拿到工具目录。</span></div>`
+                    }
+                  </article>
+                `)
+                .join("")}
+            </section>
+          `
+          : renderEmptyState(
+              "还没有接入上游 MCP",
+              "等你后续告诉我新的 MCP 地址后，我会先帮你接进来，这里就会出现它们的状态和工具。"
+            )
+        : renderResourceBanner(
+            "上游 MCP 服务器",
+            resources.remoteMcpServers.status === "error"
+              ? resources.remoteMcpServers.message
+              : "当前没有拿到上游 MCP 信息。"
+          )
+    }
     ${
       connectors
         ? `
@@ -1578,6 +1751,36 @@ function attachInteractions() {
   });
 
   document
+    .querySelectorAll<HTMLTextAreaElement>("[data-remote-tool-input]")
+    .forEach((textarea) => {
+      textarea.addEventListener("input", () => {
+        const key = textarea.dataset.remoteToolInput;
+
+        if (!key) {
+          return;
+        }
+
+        state.remoteToolDrafts[key] = textarea.value;
+      });
+    });
+
+  document
+    .querySelectorAll<HTMLButtonElement>("[data-remote-tool-run]")
+    .forEach((button) => {
+      button.addEventListener("click", async () => {
+        const key = button.dataset.remoteToolRun;
+        const serverId = button.dataset.remoteServerId;
+        const toolName = button.dataset.remoteToolName;
+
+        if (!key || !serverId || !toolName) {
+          return;
+        }
+
+        await runRemoteToolTest(key, serverId, toolName);
+      });
+    });
+
+  document
     .querySelectorAll<HTMLButtonElement>("[data-tool-test]")
     .forEach((button) => {
       button.addEventListener("click", async () => {
@@ -1748,6 +1951,71 @@ async function runToolTest(toolId: string) {
     state.flash = {
       tone: "error",
       text: `MCP 工具 ${toolId} 测试失败。`
+    };
+  } finally {
+    renderShell();
+  }
+}
+
+async function runRemoteToolTest(
+  key: string,
+  serverId: string,
+  toolName: string
+) {
+  state.remoteToolRuns[key] = {
+    pending: true,
+    result: state.remoteToolRuns[key]?.result ?? null
+  };
+  state.flash = null;
+  renderShell();
+
+  try {
+    const rawInput = state.remoteToolDrafts[key] ?? "{}";
+    const parsedArguments = JSON.parse(rawInput) as Record<string, unknown>;
+    const response = await fetch(
+      `${coreApiBaseUrl}/api/remote-mcp/servers/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(toolName)}/invoke`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          arguments: parsedArguments
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`上游 MCP 工具测试失败，响应 ${response.status}`);
+    }
+
+    state.remoteToolRuns[key] = {
+      pending: false,
+      result: remoteMcpToolInvokeResultSchema.parse(await response.json())
+    };
+    state.flash = {
+      tone: "success",
+      text: `上游工具 ${toolName} 已完成测试。`
+    };
+    await refreshData(true);
+  } catch (error) {
+    state.remoteToolRuns[key] = {
+      pending: false,
+      result: {
+        serverId,
+        toolName,
+        ok: false,
+        summary:
+          error instanceof Error
+            ? error.message
+            : "上游 MCP 工具测试时发生未知错误。",
+        preview: null,
+        executedAt: new Date().toISOString()
+      }
+    };
+    state.flash = {
+      tone: "error",
+      text: `上游工具 ${toolName} 测试失败。`
     };
   } finally {
     renderShell();

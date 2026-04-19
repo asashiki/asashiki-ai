@@ -6,6 +6,10 @@ import {
   connectorSummarySchema,
   createServiceHealth,
   recentContextSchema,
+  remoteMcpServerSchema,
+  remoteMcpToolInvokeInputSchema,
+  remoteMcpToolInvokeResultSchema,
+  remoteMcpToolSchema,
   serviceManifestSchema,
   timeLogLookupInputSchema
 } from "@asashiki/schemas";
@@ -13,6 +17,10 @@ import type { Connector } from "@asashiki/schemas";
 import { z } from "zod";
 import { apiRuntimeSchema } from "./contracts.js";
 import { initializeDatabase, resolveDatabasePath } from "./db.js";
+import {
+  createRemoteMcpRegistry,
+  parseRemoteMcpServerConfigs
+} from "./connectors/remote-mcp.js";
 import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
 import { createRepository } from "./repository.js";
 
@@ -21,6 +29,7 @@ export const coreApiEnvSchema = z.object({
   HOST: z.string().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().positive().default(4100),
   CORE_API_DB_PATH: z.string().min(1).default("./data/core-api.sqlite"),
+  REMOTE_MCP_SERVERS_JSON: z.string().optional(),
   SUPABASE_TIME_LOG_URL: z.string().url().optional(),
   SUPABASE_TIME_LOG_BEARER_TOKEN: z.string().min(1).optional(),
   SUPABASE_TIME_LOG_NAME: z.string().min(1).default("Supabase 时间日志")
@@ -34,6 +43,7 @@ export function loadCoreApiEnv(source: NodeJS.ProcessEnv): CoreApiEnv {
     HOST: source.CORE_API_HOST ?? source.HOST,
     PORT: source.CORE_API_PORT ?? source.PORT,
     CORE_API_DB_PATH: source.CORE_API_DB_PATH ?? "./data/core-api.sqlite",
+    REMOTE_MCP_SERVERS_JSON: source.REMOTE_MCP_SERVERS_JSON,
     SUPABASE_TIME_LOG_URL: source.SUPABASE_TIME_LOG_URL,
     SUPABASE_TIME_LOG_BEARER_TOKEN: source.SUPABASE_TIME_LOG_BEARER_TOKEN,
     SUPABASE_TIME_LOG_NAME:
@@ -44,6 +54,7 @@ export function loadCoreApiEnv(source: NodeJS.ProcessEnv): CoreApiEnv {
     parseServiceEnv("core-api", normalizedSource, {
       PORT: z.coerce.number().int().positive().default(4100),
       CORE_API_DB_PATH: z.string().min(1).default("./data/core-api.sqlite"),
+      REMOTE_MCP_SERVERS_JSON: z.string().optional(),
       SUPABASE_TIME_LOG_URL: z.string().url().optional(),
       SUPABASE_TIME_LOG_BEARER_TOKEN: z.string().min(1).optional(),
       SUPABASE_TIME_LOG_NAME: z.string().min(1).default("Supabase 时间日志")
@@ -71,6 +82,10 @@ export async function createCoreApiApp(options?: {
   const databasePath = resolveDatabasePath(env.CORE_API_DB_PATH);
   const database = initializeDatabase(databasePath, { seed: options?.seed });
   const repository = createRepository(database);
+  const remoteMcpRegistry = createRemoteMcpRegistry({
+    servers: parseRemoteMcpServerConfigs(env.REMOTE_MCP_SERVERS_JSON),
+    envSource: process.env
+  });
   const supabaseTimeLog = createSupabaseTimeLogClient({
     url: env.SUPABASE_TIME_LOG_URL,
     bearerToken: env.SUPABASE_TIME_LOG_BEARER_TOKEN,
@@ -114,12 +129,17 @@ export async function createCoreApiApp(options?: {
   server.get("/api/context/recent", async () => {
     const context = repository.getRecentContext();
     const timeLogConnector = await supabaseTimeLog.getConnector();
+    const remoteServers = await remoteMcpRegistry.listServers();
 
     return recentContextSchema.parse({
       ...context,
       statusHints: [
         ...context.statusHints.slice(0, 4),
-        `time-log: ${timeLogConnector.status}`
+        remoteServers.length > 0
+          ? `remote-mcp: ${
+              remoteServers.filter((server) => server.status === "online").length
+            }/${remoteServers.length}`
+          : `time-log: ${timeLogConnector.status}`
       ].slice(0, 5)
     });
   });
@@ -149,11 +169,12 @@ export async function createCoreApiApp(options?: {
   server.get("/api/connectors", async () => {
     const baseConnectors = repository.listConnectors();
     const timeLogConnector = await supabaseTimeLog.getConnector();
+    const remoteMcpConnectors = await remoteMcpRegistry.toConnectors();
 
     return connectorSchema
       .array()
       .parse(
-        [...baseConnectors, timeLogConnector].filter(
+        [...baseConnectors, timeLogConnector, ...remoteMcpConnectors].filter(
           (connector, index, list) =>
             list.findIndex((item) => item.id === connector.id) === index
         )
@@ -162,16 +183,46 @@ export async function createCoreApiApp(options?: {
   server.get("/api/connectors/summary", async () => {
     const baseConnectors = repository.listConnectors();
     const timeLogConnector = await supabaseTimeLog.getConnector();
+    const remoteMcpConnectors = await remoteMcpRegistry.toConnectors();
     const merged = connectorSchema
       .array()
       .parse(
-        [...baseConnectors, timeLogConnector].filter(
+        [...baseConnectors, timeLogConnector, ...remoteMcpConnectors].filter(
           (connector, index, list) =>
             list.findIndex((item) => item.id === connector.id) === index
         )
       );
     return summarizeConnectors(merged);
   });
+  server.get("/api/remote-mcp/servers", async () =>
+    remoteMcpServerSchema.array().parse(await remoteMcpRegistry.listServers())
+  );
+  server.get("/api/remote-mcp/servers/:serverId/tools", async (request) => {
+    const params = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    return remoteMcpToolSchema
+      .array()
+      .parse(await remoteMcpRegistry.listTools(params.serverId));
+  });
+  server.post(
+    "/api/remote-mcp/servers/:serverId/tools/:toolName/invoke",
+    async (request) => {
+      const params = z
+        .object({
+          serverId: z.string().min(1),
+          toolName: z.string().min(1)
+        })
+        .parse(request.params);
+      const payload = remoteMcpToolInvokeInputSchema.parse(request.body ?? {});
+
+      return remoteMcpToolInvokeResultSchema.parse(
+        await remoteMcpRegistry.invokeTool(
+          params.serverId,
+          params.toolName,
+          payload
+        )
+      );
+    }
+  );
   server.get("/api/time-log/recent", async (request, reply) => {
     const query = z
       .object({

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@asashiki/config": "workspace:*",
     "@asashiki/schemas": "workspace:*",
     "fastify": "^5.6.1",

@@ -205,6 +205,62 @@ export const timeLogLookupResultSchema = z.object({
 
 export type TimeLogLookupResult = z.infer<typeof timeLogLookupResultSchema>;
 
+export const remoteMcpAuthModeSchema = z.enum(["none", "bearer-env"]);
+
+export type RemoteMcpAuthMode = z.infer<typeof remoteMcpAuthModeSchema>;
+
+export const remoteMcpToolSchema = z.object({
+  serverId: z.string().min(1),
+  name: z.string().min(1),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  readOnlyHint: z.boolean(),
+  requiredArguments: z.array(z.string().min(1)).max(24),
+  inputSchema: z.record(z.string(), z.unknown())
+});
+
+export type RemoteMcpTool = z.infer<typeof remoteMcpToolSchema>;
+
+export const remoteMcpServerSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  url: z.string().url(),
+  description: z.string().min(1),
+  authMode: remoteMcpAuthModeSchema,
+  status: z.enum(["online", "degraded", "offline"]),
+  lastSeenAt: z.string().datetime(),
+  lastSuccessAt: z.string().datetime().nullable(),
+  lastError: z.string().nullable(),
+  toolCount: z.number().int().nonnegative(),
+  readOnlyToolCount: z.number().int().nonnegative(),
+  writeToolCount: z.number().int().nonnegative(),
+  tools: z.array(remoteMcpToolSchema).max(32)
+});
+
+export type RemoteMcpServer = z.infer<typeof remoteMcpServerSchema>;
+
+export const remoteMcpToolInvokeInputSchema = z.object({
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  allowWrite: z.boolean().default(false)
+});
+
+export type RemoteMcpToolInvokeInput = z.infer<
+  typeof remoteMcpToolInvokeInputSchema
+>;
+
+export const remoteMcpToolInvokeResultSchema = z.object({
+  serverId: z.string().min(1),
+  toolName: z.string().min(1),
+  ok: z.boolean(),
+  summary: z.string().min(1),
+  preview: z.string().nullable(),
+  executedAt: z.string().datetime()
+});
+
+export type RemoteMcpToolInvokeResult = z.infer<
+  typeof remoteMcpToolInvokeResultSchema
+>;
+
 export const mcpToolCatalogItemSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),

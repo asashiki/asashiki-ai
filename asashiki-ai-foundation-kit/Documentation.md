@@ -389,3 +389,38 @@ After each milestone, append:
   - `pnpm smoke`
 - Current limitation
   - The runtime pilot still needs a real `SUPABASE_TIME_LOG_URL` on your machine or VPS; without that, the connector appears offline but the rest of the system remains usable.
+
+## Milestone 8 result (slice 3)
+
+- Summary
+  - Added a generic Remote MCP Registry to `core-api`, so the project can now connect to multiple upstream remote MCP servers instead of only depending on a single Supabase-style special case.
+  - Added new Core API routes to list upstream MCP servers, list their tools, and invoke individual tools for safe testing from the control room.
+  - Extended `admin-web` Connectors view so it now shows upstream MCP connection state, tool catalogs, and per-tool JSON test panels.
+  - Kept the existing time-log pilot in place as a business-specific example while moving future connector growth onto the new generic MCP registry layer.
+- Files changed
+  - `packages/schemas/src/index.ts`
+  - `apps/core-api/src/connectors/remote-mcp.ts`
+  - `apps/core-api/src/app.ts`
+  - `apps/core-api/src/core-api.test.ts`
+  - `apps/core-api/package.json`
+  - `apps/admin-web/src/main.ts`
+  - `apps/admin-web/src/style.css`
+  - `.env.example`
+  - `.env.production.example`
+  - `README.md`
+  - `asashiki-ai-foundation-kit/docs/04-api-and-mcp-surface.md`
+  - `asashiki-ai-foundation-kit/docs/11-remote-mcp-registry.md`
+- Validation run
+  - `pnpm install`
+  - `pnpm --filter @asashiki/core-api typecheck`
+  - `pnpm --filter @asashiki/core-api test`
+  - `pnpm --filter @asashiki/admin-web build`
+- Problems found
+  - Supabase hosted MCP can use browser OAuth in IDE clients, but project-side server runtimes still need their own auth strategy; the current documented path is Bearer Token / PAT via env.
+  - The old dedicated time-log pilot still exists beside the new generic MCP registry, so there is temporary overlap until a later business adapter pass consolidates them.
+- Decisions taken
+  - Keep upstream remote MCP onboarding Codex-managed first, with the UI focused on visibility and testing rather than full self-service configuration.
+  - Use a minimal config shape (`id`, `name`, `url`, `description`, optional bearer token env) to avoid over-designing connector setup too early.
+  - Do not automatically proxy all upstream tools through `mcp-gateway`; keep the project MCP surface curated and explicit.
+- Next milestone readiness
+  - The next step can now focus on picking one real upstream MCP or data source at a time and turning it from “connected and testable” into a dedicated business feature when it proves useful.

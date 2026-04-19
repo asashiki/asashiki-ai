@@ -44,6 +44,9 @@ importers:
       '@fastify/cors':
         specifier: ^11.1.0
         version: 11.2.0
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@3.25.76)
       fastify:
         specifier: ^5.6.1
         version: 5.8.5

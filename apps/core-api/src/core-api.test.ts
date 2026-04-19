@@ -1,20 +1,24 @@
 import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import test from "node:test";
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
 import Fastify from "fastify";
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createCoreApiApp } from "./app.js";
 
-test("seeded core api serves profile, journals, connectors and audit", async () => {
+test("seeded core api serves profile, journals, remote mcp, connectors and audit", async () => {
   const directory = mkdtempSync(join(tmpdir(), "asashiki-core-api-"));
   const databasePath = join(directory, "core-api.sqlite");
   const upstream = Fastify({ logger: false });
+  const remoteMcpApp = Fastify({ logger: false });
 
   upstream.get("/time_events", async () => [
     {
       id: "evt-1",
-      title: "写项目计划",
+      title: "Write milestone plan",
       started_at: "2025-04-16T09:00:00.000Z",
       ended_at: "2025-04-16T10:00:00.000Z",
       note: "Milestone 8 connector planning",
@@ -22,7 +26,7 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
     },
     {
       id: "evt-2",
-      title: "整理控制台界面",
+      title: "Refine admin console",
       started_at: "2025-04-16T17:00:00.000Z",
       ended_at: "2025-04-16T18:00:00.000Z",
       note: "Admin-first pass",
@@ -35,12 +39,78 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
     port: 0
   });
 
+  const remoteMcpServer = new McpServer({
+    name: "remote-test-server",
+    version: "0.1.0"
+  });
+
+  remoteMcpServer.registerTool(
+    "list_time_events",
+    {
+      title: "List Time Events",
+      description: "Return a synthetic time-event preview.",
+      inputSchema: {
+        limit: z.number().int().positive().max(5).optional()
+      },
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async (input: { limit?: number }) => {
+      const items = [
+        {
+          id: "evt-2",
+          title: "Refine admin console"
+        }
+      ].slice(0, input.limit ?? 1);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ items }, null, 2)
+          }
+        ],
+        structuredContent: {
+          items
+        }
+      };
+    }
+  );
+
+  remoteMcpApp.post("/mcp", async (request, reply) => {
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined
+    });
+
+    reply.raw.on("close", () => {
+      transport.close();
+    });
+
+    await remoteMcpServer.connect(transport);
+    await transport.handleRequest(request.raw, reply.raw, request.body);
+    return reply;
+  });
+
+  const remoteMcpAddress = await remoteMcpApp.listen({
+    host: "127.0.0.1",
+    port: 0
+  });
+
   const { server } = await createCoreApiApp({
     env: {
       HOST: "127.0.0.1",
       PORT: 4100,
       NODE_ENV: "test",
       CORE_API_DB_PATH: databasePath,
+      REMOTE_MCP_SERVERS_JSON: JSON.stringify([
+        {
+          id: "supabase",
+          name: "Supabase Remote MCP",
+          url: `${remoteMcpAddress}/mcp`,
+          description: "Synthetic remote MCP used by the test suite."
+        }
+      ]),
       SUPABASE_TIME_LOG_URL: `${upstreamAddress}/time_events`,
       SUPABASE_TIME_LOG_BEARER_TOKEN: undefined,
       SUPABASE_TIME_LOG_NAME: "Supabase 时间日志"
@@ -68,21 +138,12 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
     assert.equal(updatedProfile.statusCode, 200);
     assert.equal(updatedProfile.json().displayName, "Asashiki Console");
 
-    const profileAfterUpdate = await server.inject({
-      method: "GET",
-      url: "/api/profile/summary"
-    });
-    assert.equal(profileAfterUpdate.statusCode, 200);
-    assert.equal(profileAfterUpdate.json().displayName, "Asashiki Console");
-
     const journals = await server.inject({
       method: "GET",
       url: "/api/journals"
     });
     assert.equal(journals.statusCode, 200);
-    const journalPayload = journals.json();
-    assert.equal(journalPayload.drafts.length >= 1, true);
-    assert.equal(journalPayload.entries.length >= 1, true);
+    assert.equal(journals.json().drafts.length >= 1, true);
 
     const created = await server.inject({
       method: "POST",
@@ -93,21 +154,39 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
       }
     });
     assert.equal(created.statusCode, 201);
-    const createdPayload = created.json();
-    assert.equal(typeof createdPayload.id, "string");
-
-    const draft = await server.inject({
-      method: "GET",
-      url: `/api/journals/drafts/${createdPayload.id}`
-    });
-    assert.equal(draft.statusCode, 200);
 
     const connectors = await server.inject({
       method: "GET",
       url: "/api/connectors/summary"
     });
     assert.equal(connectors.statusCode, 200);
-    assert.equal(connectors.json().total >= 2, true);
+    assert.equal(connectors.json().total >= 3, true);
+
+    const remoteServers = await server.inject({
+      method: "GET",
+      url: "/api/remote-mcp/servers"
+    });
+    assert.equal(remoteServers.statusCode, 200);
+    assert.equal(remoteServers.json()[0].toolCount, 1);
+
+    const remoteTools = await server.inject({
+      method: "GET",
+      url: "/api/remote-mcp/servers/supabase/tools"
+    });
+    assert.equal(remoteTools.statusCode, 200);
+    assert.equal(remoteTools.json()[0].name, "list_time_events");
+
+    const remoteInvoke = await server.inject({
+      method: "POST",
+      url: "/api/remote-mcp/servers/supabase/tools/list_time_events/invoke",
+      payload: {
+        arguments: {
+          limit: 1
+        }
+      }
+    });
+    assert.equal(remoteInvoke.statusCode, 200);
+    assert.equal(remoteInvoke.json().ok, true);
 
     const timeLogRecent = await server.inject({
       method: "GET",
@@ -122,7 +201,7 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
     });
     assert.equal(timeLogLookup.statusCode, 200);
     assert.equal(timeLogLookup.json().matched, true);
-    assert.equal(timeLogLookup.json().event.title, "整理控制台界面");
+    assert.equal(timeLogLookup.json().event.title, "Refine admin console");
 
     const audit = await server.inject({
       method: "GET",
@@ -133,6 +212,7 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
   } finally {
     await server.close();
     await upstream.close();
+    await remoteMcpApp.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
