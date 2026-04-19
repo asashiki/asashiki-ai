@@ -221,9 +221,9 @@ curl http://127.0.0.1:4200/health
 最小 smoke 目标：
 
 1. Claude 连接 `https://mcp.asashiki.com/mcp`
-2. `listTools` 返回 5 个工具
+2. `listTools` 返回 6 个工具
 3. `read_profile_summary` 成功
-4. `get_connector_status` 或 `get_health_summary` 成功
+4. `get_connector_status`、`get_health_summary` 或 `lookup_time_log_at` 成功
 5. `create_journal_draft` 成功
 
 完成后，再用 Admin 或 Core API 检查新 draft 是否真的落库。

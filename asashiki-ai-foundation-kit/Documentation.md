@@ -332,7 +332,7 @@ After each milestone, append:
 - Follow-up refinement
   - Renamed the main views into clearer Chinese-first labels and reduced ambiguous English copy in the console shell.
   - Clarified that `连接中心` shows registered system connectors rather than live agent sessions.
-  - Clarified that `工具测试` shows the five `mcp-gateway` tools and can run per-tool smoke checks.
+  - Clarified that `工具测试` shows the `mcp-gateway` tools and can run per-tool smoke checks.
   - Reframed the old Activity area into a troubleshooting-oriented `系统状态` page and added journal writing guidance.
 - Files changed
   - `apps/admin-web/src/main.ts`
@@ -352,10 +352,40 @@ After each milestone, append:
   - `pnpm --filter @asashiki/core-api test`
   - `pnpm --filter @asashiki/mcp-gateway test`
 - Problems found
-  - The first real external connector pilot is still pending; current connector data remains the seeded registry.
+  - At the end of slice 1, the first real external connector pilot had not yet been connected; connector data still came from the seeded registry.
   - Core API still uses Node 24 `node:sqlite`, so experimental warnings remain in service tests.
 - Decisions taken
   - Keep the first Milestone 8 slice focused on operator usability rather than jumping straight to Supabase integration.
   - Let `admin-web` call dedicated helper endpoints for MCP smoke instead of trying to run browser-native Streamable HTTP sessions directly.
 - Next milestone readiness
-  - The next Milestone 8 slice can now focus on Connector Center deepening and the Supabase time-log pilot.
+  - The next Milestone 8 slice can now focus on the first real deployment of the Supabase time-log pilot.
+
+## Milestone 8 result (slice 2)
+
+- Summary
+  - Added a Supabase time-log connector client in `core-api`, driven by `SUPABASE_TIME_LOG_URL` and optional bearer token settings.
+  - Merged the Supabase pilot into the connector registry so `连接中心` now shows a real external connector rather than only seeded entries.
+  - Added `GET /api/time-log/recent` and `GET /api/time-log/lookup?at=...` so the control room can preview and query time logs directly.
+  - Added `lookup_time_log_at` to `mcp-gateway`, so agents can ask “that time I was doing what” through the project’s own MCP surface.
+  - Added a Supabase time-log test panel to `admin-web` so timestamp lookups can be run without leaving the UI.
+- Files changed
+  - `packages/schemas/src/index.ts`
+  - `apps/core-api/src/connectors/supabase-time-log.ts`
+  - `apps/core-api/src/app.ts`
+  - `apps/core-api/src/core-api.test.ts`
+  - `apps/mcp-gateway/src/core-api-client.ts`
+  - `apps/mcp-gateway/src/mcp.ts`
+  - `apps/mcp-gateway/src/mcp-gateway.test.ts`
+  - `apps/mcp-gateway/src/cli/smoke-test.ts`
+  - `apps/admin-web/src/main.ts`
+  - `.env.example`
+  - `.env.production.example`
+  - `README.md`
+  - `asashiki-ai-foundation-kit/docs/04-api-and-mcp-surface.md`
+  - `asashiki-ai-foundation-kit/Documentation.md`
+- Validation run
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm smoke`
+- Current limitation
+  - The runtime pilot still needs a real `SUPABASE_TIME_LOG_URL` on your machine or VPS; without that, the connector appears offline but the rest of the system remains usable.

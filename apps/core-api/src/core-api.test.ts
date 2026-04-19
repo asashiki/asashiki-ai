@@ -3,18 +3,47 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
+import Fastify from "fastify";
 import { createCoreApiApp } from "./app.js";
 
 test("seeded core api serves profile, journals, connectors and audit", async () => {
   const directory = mkdtempSync(join(tmpdir(), "asashiki-core-api-"));
   const databasePath = join(directory, "core-api.sqlite");
+  const upstream = Fastify({ logger: false });
+
+  upstream.get("/time_events", async () => [
+    {
+      id: "evt-1",
+      title: "写项目计划",
+      started_at: "2025-04-16T09:00:00.000Z",
+      ended_at: "2025-04-16T10:00:00.000Z",
+      note: "Milestone 8 connector planning",
+      tags: ["planning", "project"]
+    },
+    {
+      id: "evt-2",
+      title: "整理控制台界面",
+      started_at: "2025-04-16T17:00:00.000Z",
+      ended_at: "2025-04-16T18:00:00.000Z",
+      note: "Admin-first pass",
+      tags: ["ui", "console"]
+    }
+  ]);
+
+  const upstreamAddress = await upstream.listen({
+    host: "127.0.0.1",
+    port: 0
+  });
 
   const { server } = await createCoreApiApp({
     env: {
       HOST: "127.0.0.1",
       PORT: 4100,
       NODE_ENV: "test",
-      CORE_API_DB_PATH: databasePath
+      CORE_API_DB_PATH: databasePath,
+      SUPABASE_TIME_LOG_URL: `${upstreamAddress}/time_events`,
+      SUPABASE_TIME_LOG_BEARER_TOKEN: undefined,
+      SUPABASE_TIME_LOG_NAME: "Supabase 时间日志"
     },
     logger: false,
     seed: true
@@ -78,7 +107,22 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
       url: "/api/connectors/summary"
     });
     assert.equal(connectors.statusCode, 200);
-    assert.equal(connectors.json().total >= 1, true);
+    assert.equal(connectors.json().total >= 2, true);
+
+    const timeLogRecent = await server.inject({
+      method: "GET",
+      url: "/api/time-log/recent?limit=2"
+    });
+    assert.equal(timeLogRecent.statusCode, 200);
+    assert.equal(timeLogRecent.json().events.length, 2);
+
+    const timeLogLookup = await server.inject({
+      method: "GET",
+      url: "/api/time-log/lookup?at=2025-04-16T17:25:00.000Z"
+    });
+    assert.equal(timeLogLookup.statusCode, 200);
+    assert.equal(timeLogLookup.json().matched, true);
+    assert.equal(timeLogLookup.json().event.title, "整理控制台界面");
 
     const audit = await server.inject({
       method: "GET",
@@ -88,6 +132,7 @@ test("seeded core api serves profile, journals, connectors and audit", async () 
     assert.equal(audit.json().length >= 2, true);
   } finally {
     await server.close();
+    await upstream.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

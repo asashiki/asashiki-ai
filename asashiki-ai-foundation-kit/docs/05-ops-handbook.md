@@ -86,8 +86,8 @@ pnpm dev:web
 ### MCP MVP smoke checklist
 1. `pnpm dev:services` 能启动 Core API 与 MCP Gateway
 2. MCP client 能连接 `http://127.0.0.1:4200/mcp`
-3. `listTools` 至少返回 5 个工具
-4. `read_profile_summary`、`get_health_summary`、`create_journal_draft` 至少 3 个工具调用成功
+3. `listTools` 至少返回 6 个工具
+4. `read_profile_summary`、`get_health_summary`、`lookup_time_log_at`、`create_journal_draft` 至少 3 个工具调用成功
 5. `create_journal_draft` 后 Admin 中可看到新 draft
 
 ### Journal draft not saved
@@ -120,9 +120,9 @@ pnpm dev:web
 
 ### Claude MCP smoke checklist
 1. Claude 连接 `https://mcp.asashiki.com/mcp`
-2. `listTools` 返回 5 个工具
+2. `listTools` 返回 6 个工具
 3. `read_profile_summary` 成功
-4. `get_recent_context` 或 `get_health_summary` 成功
+4. `get_recent_context`、`get_health_summary` 或 `lookup_time_log_at` 成功
 5. `create_journal_draft` 成功，并能在 Admin 或 Core API 数据中看到新增 draft
 
 ### Public Web local preview checklist

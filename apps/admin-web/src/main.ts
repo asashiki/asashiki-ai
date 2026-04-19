@@ -11,7 +11,9 @@ import {
   profileSummaryInputSchema,
   profileSummarySavedSchema,
   profileSummarySchema,
-  serviceHealthSchema
+  serviceHealthSchema,
+  timeLogLookupResultSchema,
+  timeLogRecentSchema
 } from "@asashiki/schemas";
 import type {
   AuditEvent,
@@ -23,7 +25,9 @@ import type {
   McpToolCatalogItem,
   McpToolTestResult,
   ProfileSummary,
-  ServiceHealth
+  ServiceHealth,
+  TimeLogLookupResult,
+  TimeLogRecent
 } from "@asashiki/schemas";
 import "./style.css";
 
@@ -54,6 +58,7 @@ type DashboardResources = {
   latestHealth: Resource<HealthSnapshot>;
   connectors: Resource<Connector[]>;
   connectorSummary: Resource<ConnectorSummary>;
+  timeLogRecent: Resource<TimeLogRecent>;
   recentAudit: Resource<AuditEvent[]>;
   toolCatalog: Resource<McpToolCatalogItem[]>;
 };
@@ -95,6 +100,12 @@ type AppState = {
       result: McpToolTestResult | null;
     }
   >;
+  timeLogQueryAt: string;
+  timeLogLookup: {
+    pending: boolean;
+    result: TimeLogLookupResult | null;
+    error: string | null;
+  };
 };
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -128,7 +139,13 @@ const state: AppState = {
     source: "admin-dashboard",
     content: ""
   },
-  toolRuns: {}
+  toolRuns: {},
+  timeLogQueryAt: toLocalDatetimeValue(new Date()),
+  timeLogLookup: {
+    pending: false,
+    result: null,
+    error: null
+  }
 };
 
 const viewMeta: Record<
@@ -220,6 +237,11 @@ function formatNumber(value: number | null, suffix = "") {
   return `${value}${suffix}`;
 }
 
+function toLocalDatetimeValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 function formatConnectorStatus(status: Connector["status"]) {
   switch (status) {
     case "online":
@@ -258,6 +280,8 @@ function formatToolTitle(tool: McpToolCatalogItem) {
       return "读取健康摘要";
     case "get_connector_status":
       return "读取连接状态";
+    case "lookup_time_log_at":
+      return "按时刻查询时间日志";
     default:
       return tool.title;
   }
@@ -275,6 +299,8 @@ function formatToolDescription(tool: McpToolCatalogItem) {
       return "读取当前健康摘要，不暴露原始明细。";
     case "get_connector_status":
       return "读取连接器摘要和当前状态，确认外部连接面是否可读。";
+    case "lookup_time_log_at":
+      return "按某个时刻查询 Supabase 时间日志，回答“那时我在做什么”。";
     default:
       return tool.description;
   }
@@ -290,6 +316,7 @@ function formatResourceName(key: string) {
     latestHealth: "最新健康快照",
     connectors: "连接器列表",
     connectorSummary: "连接摘要",
+    timeLogRecent: "Supabase 时间日志预览",
     recentAudit: "最近审计事件",
     toolCatalog: "MCP 工具目录"
   };
@@ -399,6 +426,7 @@ async function loadDashboardResources(): Promise<DashboardResources> {
     latestHealth,
     connectors,
     connectorSummary,
+    timeLogRecent,
     recentAudit,
     toolCatalog
   ] = await Promise.all([
@@ -450,6 +478,13 @@ async function loadDashboardResources(): Promise<DashboardResources> {
         "连接摘要"
       )
     ),
+    loadResource("Supabase 时间日志预览", () =>
+      loadJson(
+        `${coreApiBaseUrl}/api/time-log/recent?limit=5`,
+        timeLogRecentSchema,
+        "Supabase 时间日志预览"
+      )
+    ),
     loadResource("最近审计事件", () =>
       loadJson(
         `${coreApiBaseUrl}/api/audit/recent`,
@@ -480,6 +515,7 @@ async function loadDashboardResources(): Promise<DashboardResources> {
     latestHealth,
     connectors,
     connectorSummary,
+    timeLogRecent,
     recentAudit,
     toolCatalog
   };
@@ -552,6 +588,42 @@ function renderMetricCard(
   `;
 }
 
+function renderTimeLogLookupResult(result: TimeLogLookupResult) {
+  if (!result.matched || !result.event) {
+    return `
+      <div class="inline-alert">
+        <strong>没有匹配到记录</strong>
+        <span>${escapeHtml(result.message)}</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="inline-alert inline-alert--success">
+      <strong>${escapeHtml(result.event.title)}</strong>
+      <span>${escapeHtml(result.message)}</span>
+      <small>
+        ${escapeHtml(formatDateTime(result.event.startedAt))}
+        ${
+          result.event.endedAt
+            ? ` → ${escapeHtml(formatDateTime(result.event.endedAt))}`
+            : ""
+        }
+        ${
+          result.distanceMinutes !== null && result.distanceMinutes > 0
+            ? ` · 提前 ${result.distanceMinutes} 分钟`
+            : ""
+        }
+      </small>
+      ${
+        result.event.note || result.event.rawPreview
+          ? `<span>${escapeHtml(result.event.note ?? result.event.rawPreview ?? "")}</span>`
+          : ""
+      }
+    </div>
+  `;
+}
+
 function renderEmptyState(title: string, description: string) {
   return `
     <section class="empty-state">
@@ -597,6 +669,7 @@ function renderTopStatus(resources: DashboardResources | null) {
   const mcpHealth = asData(resources.mcpHealth);
   const journals = asData(resources.journals);
   const connectorSummary = asData(resources.connectorSummary);
+  const timeLogRecent = asData(resources.timeLogRecent);
   const toolCatalog = asData(resources.toolCatalog);
 
   return `
@@ -619,6 +692,12 @@ function renderTopStatus(resources: DashboardResources | null) {
           ? `在线连接 ${connectorSummary.online}/${connectorSummary.total}`
           : "连接状态暂缺",
         connectorSummary ? "neutral" : "warn"
+      )}
+      ${renderBadge(
+        timeLogRecent
+          ? `时间日志 ${timeLogRecent.events.length} 条`
+          : "时间日志暂缺",
+        timeLogRecent ? "neutral" : "warn"
       )}
       ${renderBadge(
         toolCatalog ? `工具 ${toolCatalog.length}` : "工具目录暂缺",
@@ -1018,6 +1097,7 @@ function renderJournals(resources: DashboardResources) {
 function renderConnectors(resources: DashboardResources) {
   const connectors = asData(resources.connectors);
   const summary = asData(resources.connectorSummary);
+  const timeLogRecent = asData(resources.timeLogRecent);
 
   return `
     <section class="panel">
@@ -1055,6 +1135,71 @@ function renderConnectors(resources: DashboardResources) {
         summary ? "当前不可用" : "摘要暂缺",
         summary && summary.offline === 0 ? "good" : "warn"
       )}
+    </section>
+    <section class="content-grid content-grid--profile">
+      <article class="panel panel--form">
+        <div class="panel__header">
+          <p>Supabase 试点</p>
+          <h3>时间日志查询测试</h3>
+        </div>
+        <p class="panel__copy">
+          这里直接测试“某个时刻我在做什么”这条真实链路。输入一个时间点后，控制台会通过 Core API 去查询 Supabase 时间日志。
+        </p>
+        <form id="time-log-form" class="editor-form">
+          <label>
+            <span>查询时刻</span>
+            <input
+              id="time-log-at"
+              name="at"
+              type="datetime-local"
+              value="${escapeHtml(state.timeLogQueryAt)}"
+              ${state.timeLogLookup.pending ? "disabled" : ""}
+            />
+          </label>
+          <div class="panel__actions">
+            <button class="button button--primary" type="submit" ${state.timeLogLookup.pending ? "disabled" : ""}>
+              ${state.timeLogLookup.pending ? "查询中..." : "查询这个时刻"}
+            </button>
+          </div>
+        </form>
+        ${
+          state.timeLogLookup.error
+            ? `<div class="inline-alert inline-alert--error"><strong>查询失败</strong><span>${escapeHtml(state.timeLogLookup.error)}</span></div>`
+            : state.timeLogLookup.result
+              ? renderTimeLogLookupResult(state.timeLogLookup.result)
+              : `<div class="inline-alert"><span>还没有执行查询。你可以先试试某个你记得的时间点。</span></div>`
+        }
+      </article>
+      <article class="panel">
+        <div class="panel__header">
+          <p>最近预览</p>
+          <h3>Supabase 时间日志样本</h3>
+        </div>
+        ${
+          timeLogRecent
+            ? `
+              <ul class="stack-list">
+                ${timeLogRecent.events
+                  .map(
+                    (event) => `
+                      <li>
+                        <strong>${escapeHtml(event.title)}</strong>
+                        <span>${formatDateTime(event.startedAt)}${event.endedAt ? ` → ${formatDateTime(event.endedAt)}` : ""}</span>
+                        <p>${escapeHtml(event.note ?? event.rawPreview ?? "无补充说明")}</p>
+                      </li>
+                    `
+                  )
+                  .join("")}
+              </ul>
+            `
+            : renderResourceBanner(
+                "Supabase 时间日志",
+                resources.timeLogRecent.status === "error"
+                  ? resources.timeLogRecent.message
+                  : "当前还没有拿到时间日志样本。"
+              )
+        }
+      </article>
     </section>
     ${
       connectors
@@ -1114,7 +1259,7 @@ function renderTools(resources: DashboardResources) {
         <h3>这里是 mcp-gateway 的工具，不是连接状态页</h3>
       </div>
       <p class="panel__copy">
-        当前应该能看到 5 个工具。这里展示的是 \`mcp-gateway\` 暴露出来的工具目录，并可逐个测试它们有没有正常连到后端。
+        当前应该能看到 6 个工具。这里展示的是 \`mcp-gateway\` 暴露出来的工具目录，并可逐个测试它们有没有正常连到后端。
       </p>
     </section>
     ${
@@ -1421,6 +1566,17 @@ function attachInteractions() {
     state.journalForm.content = journalContent.value;
   });
 
+  const timeLogForm = document.querySelector<HTMLFormElement>("#time-log-form");
+  timeLogForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await lookupTimeLogAt();
+  });
+
+  const timeLogAt = document.querySelector<HTMLInputElement>("#time-log-at");
+  timeLogAt?.addEventListener("input", () => {
+    state.timeLogQueryAt = timeLogAt.value;
+  });
+
   document
     .querySelectorAll<HTMLButtonElement>("[data-tool-test]")
     .forEach((button) => {
@@ -1592,6 +1748,64 @@ async function runToolTest(toolId: string) {
     state.flash = {
       tone: "error",
       text: `MCP 工具 ${toolId} 测试失败。`
+    };
+  } finally {
+    renderShell();
+  }
+}
+
+async function lookupTimeLogAt() {
+  if (!state.timeLogQueryAt) {
+    state.timeLogLookup = {
+      pending: false,
+      result: null,
+      error: "请先选择一个要查询的时间。"
+    };
+    renderShell();
+    return;
+  }
+
+  state.timeLogLookup = {
+    pending: true,
+    result: state.timeLogLookup.result,
+    error: null
+  };
+  renderShell();
+
+  try {
+    const at = new Date(state.timeLogQueryAt);
+
+    if (Number.isNaN(at.getTime())) {
+      throw new Error("时间格式无效，请重新选择。");
+    }
+
+    const search = new URLSearchParams({
+      at: at.toISOString()
+    });
+    const response = await fetch(
+      `${coreApiBaseUrl}/api/time-log/lookup?${search.toString()}`
+    );
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+      throw new Error(payload?.message ?? `时间日志查询失败，响应 ${response.status}`);
+    }
+
+    state.timeLogLookup = {
+      pending: false,
+      result: timeLogLookupResultSchema.parse(await response.json()),
+      error: null
+    };
+  } catch (error) {
+    state.timeLogLookup = {
+      pending: false,
+      result: null,
+      error:
+        error instanceof Error
+          ? error.message
+          : "时间日志查询时发生未知错误。"
     };
   } finally {
     renderShell();

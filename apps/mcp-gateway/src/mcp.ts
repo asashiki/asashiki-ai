@@ -8,7 +8,9 @@ import {
   mcpToolCatalogSchema,
   mcpToolTestResultSchema,
   profileSummarySchema,
-  recentContextSchema
+  recentContextSchema,
+  timeLogLookupInputSchema,
+  timeLogLookupResultSchema
 } from "@asashiki/schemas";
 import { z } from "zod";
 import type { CoreApiClient } from "./core-api-client.js";
@@ -23,7 +25,8 @@ const mcpToolIds = [
   "get_recent_context",
   "create_journal_draft",
   "get_health_summary",
-  "get_connector_status"
+  "get_connector_status",
+  "lookup_time_log_at"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -64,6 +67,13 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     description:
       "Return connector summary plus current connector states curated by the Core API.",
     readOnlyHint: true
+  },
+  {
+    id: "lookup_time_log_at",
+    title: "Lookup Time Log At",
+    description:
+      "Look up the Supabase-backed time log around a specific timestamp through the Core API.",
+    readOnlyHint: true
   }
 ]);
 
@@ -81,6 +91,9 @@ const healthSummaryTool = mcpToolCatalog.find(
 )!;
 const connectorStatusTool = mcpToolCatalog.find(
   (tool) => tool.id === "get_connector_status"
+)!;
+const lookupTimeLogTool = mcpToolCatalog.find(
+  (tool) => tool.id === "lookup_time_log_at"
 )!;
 
 export function createMcpGatewayServer(client: CoreApiClient) {
@@ -217,6 +230,31 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
+  server.registerTool(
+    "lookup_time_log_at",
+    {
+      title: lookupTimeLogTool.title,
+      description: lookupTimeLogTool.description,
+      inputSchema: timeLogLookupInputSchema,
+      outputSchema: timeLogLookupResultSchema,
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async (input: z.infer<typeof timeLogLookupInputSchema>) => {
+      const output = await client.lookupTimeLogAt(input);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(output, null, 2)
+          }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
   return server;
 }
 
@@ -279,6 +317,20 @@ export async function runMcpToolSmokeTest(
           ok: true,
           summary: `连接器在线 ${output.summary.online}/${output.summary.total}。`,
           preview: output.connectors[0]?.name ?? "No connectors returned.",
+          executedAt
+        });
+      }
+      case "lookup_time_log_at": {
+        const output = await client.lookupTimeLogAt({
+          at: new Date().toISOString()
+        });
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: output.matched
+            ? "时间日志查询成功。"
+            : "时间日志查询成功，但当前时刻没有匹配记录。",
+          preview: output.event?.title ?? output.message,
           executedAt
         });
       }

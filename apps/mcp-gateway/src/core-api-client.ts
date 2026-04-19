@@ -5,7 +5,10 @@ import {
   journalDraftInputSchema,
   journalDraftSavedSchema,
   profileSummarySchema,
-  recentContextSchema
+  recentContextSchema,
+  timeLogLookupInputSchema,
+  timeLogLookupResultSchema,
+  timeLogRecentSchema
 } from "@asashiki/schemas";
 
 function resolveUrl(baseUrl: string, path: string) {
@@ -87,6 +90,32 @@ export function createCoreApiClient(baseUrl: string) {
         summary: connectorSummarySchema.parse(await summaryResponse.json()),
         connectors: connectorSchema.array().parse(await connectorsResponse.json())
       };
+    },
+
+    async getRecentTimeLog(limit = 5) {
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/time-log/recent?limit=${limit}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load Supabase time-log preview from Core API.");
+      }
+
+      return timeLogRecentSchema.parse(await response.json());
+    },
+
+    async lookupTimeLogAt(input: unknown) {
+      const payload = timeLogLookupInputSchema.parse(input);
+      const search = new URLSearchParams({ at: payload.at });
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/time-log/lookup?${search.toString()}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to query Supabase time-log through Core API.");
+      }
+
+      return timeLogLookupResultSchema.parse(await response.json());
     }
   };
 }

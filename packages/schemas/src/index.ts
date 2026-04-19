@@ -166,6 +166,45 @@ export const connectorSummarySchema = z.object({
 
 export type ConnectorSummary = z.infer<typeof connectorSummarySchema>;
 
+export const timeLogEventSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime().nullable(),
+  note: z.string().nullable(),
+  source: z.string().min(1),
+  tags: z.array(z.string().min(1)).max(12),
+  rawPreview: z.string().nullable()
+});
+
+export type TimeLogEvent = z.infer<typeof timeLogEventSchema>;
+
+export const timeLogRecentSchema = z.object({
+  connectorId: z.string().min(1),
+  fetchedAt: z.string().datetime(),
+  events: z.array(timeLogEventSchema).max(12)
+});
+
+export type TimeLogRecent = z.infer<typeof timeLogRecentSchema>;
+
+export const timeLogLookupInputSchema = z.object({
+  at: z.string().datetime()
+});
+
+export type TimeLogLookupInput = z.infer<typeof timeLogLookupInputSchema>;
+
+export const timeLogLookupResultSchema = z.object({
+  connectorId: z.string().min(1),
+  queriedAt: z.string().datetime(),
+  matched: z.boolean(),
+  strategy: z.enum(["contains", "nearest-previous", "not-found"]),
+  message: z.string().min(1),
+  event: timeLogEventSchema.nullable(),
+  distanceMinutes: z.number().int().nonnegative().nullable()
+});
+
+export type TimeLogLookupResult = z.infer<typeof timeLogLookupResultSchema>;
+
 export const mcpToolCatalogItemSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),

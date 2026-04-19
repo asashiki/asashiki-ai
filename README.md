@@ -68,11 +68,31 @@ asashiki-ai-foundation-kit/
 - `总览`: 先看系统在线情况、数据流完整度和最近需要注意的异常
 - `档案`: 直接在控制台编辑 profile summary 与 top preferences
 - `记录`: 查看草稿 / 已归档条目，并通过表单创建新的 journal draft
-- `连接中心`: 查看系统登记的连接器状态、能力、暴露等级与最近错误；这不是 agent 在线列表
-- `工具测试`: 读取 `mcp-gateway` 当前暴露的工具目录，并逐个执行 smoke test
+- `连接中心`: 查看系统登记的连接器状态、能力、暴露等级与最近错误；这不是 agent 在线列表，同时现在可直接查询 Supabase 时间日志
+- `工具测试`: 读取 `mcp-gateway` 当前暴露的工具目录，并逐个执行 smoke test；现已包含时间日志查询工具
 - `系统状态`: 查看 Core API / MCP Gateway 运行状态、审计事件和数据面完整度，用于排查问题
 
 当前 `admin-web` 已支持“局部失败可见”：当服务抽风、某几项数据取不到时，控制台仍会保留页面结构，并明确提示哪些数据面不可用。
+
+## Supabase 时间日志试点
+
+当前首个真实外部数据源试点已经接入到 `core-api` / `admin-web` / `mcp-gateway` 三层，但要真正连上你的数据，仍需在根 `.env` 或 `.env.production` 中填写一个可读 JSON 的只读入口：
+
+- `SUPABASE_TIME_LOG_URL`
+- `SUPABASE_TIME_LOG_BEARER_TOKEN`（可选；如果你的只读入口需要 Bearer Token）
+- `SUPABASE_TIME_LOG_NAME`（可选）
+
+这条入口当前按“只读时间日志”理解：
+
+- 返回 `time_events` 的 JSON 数组，或对象里的 `data` / `rows` 数组
+- 代码会自动尝试识别常见字段，例如 `title`、`activity`、`started_at`、`ended_at`、`note`
+- `连接中心` 里可以直接查询“某个时刻我在做什么”
+
+如果你给的是 Codex 本机的 Supabase MCP 地址，要注意：
+
+- `codex mcp add supabase ...` 只是让 Codex 本机能连 Supabase MCP
+- 项目运行时真正需要的是 **你的控制台后端可访问的只读时间日志 HTTP 入口**
+- 这两者不是同一个地址
 
 ## Public Status 复用入口
 
@@ -88,6 +108,7 @@ asashiki-ai-foundation-kit/
 - `create_journal_draft`
 - `get_health_summary`
 - `get_connector_status`
+- `lookup_time_log_at`
 
 当前真实 MCP 服务入口位于 `http://127.0.0.1:4200/mcp`，本地可通过 Streamable HTTP MCP client 连接。
 同时也提供了控制台专用的 HTTP 辅助入口：
@@ -108,6 +129,7 @@ asashiki-ai-foundation-kit/
   - [apps/admin-web/.env.production.example](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/admin-web/.env.production.example)
 
 当前服务容器默认仅绑定到 `127.0.0.1`；如需配合 NPM 等反代场景对外监听，可在 `.env.production` 中改写 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 为 `0.0.0.0`，并使用 `docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build` 让 Compose 同时读取端口映射和容器环境变量。
+若要启用 Supabase 时间日志试点，也在同一份 `.env.production` 中填写 `SUPABASE_TIME_LOG_URL` / `SUPABASE_TIME_LOG_BEARER_TOKEN`。
 
 ## 当前发布边界
 
