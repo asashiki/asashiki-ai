@@ -4,7 +4,7 @@
 
 - Project phase: Milestone 8 first execution slice completed locally
 - Active milestone: Milestone 8
-- Code status: admin-web has been rebuilt into an admin-first console shell with profile editing and MCP test panels
+- Code status: admin-web has been rebuilt into an admin-first console shell with profile editing, MCP test panels, and clearer Chinese-first page semantics
 - Deployment status: VPS + domain + Claude MCP path verified; public-web remains local-preview only
 
 ## Decisions frozen so far
@@ -329,6 +329,11 @@ After each milestone, append:
   - Added profile editing through `PUT /api/profile/summary`, so core text data is no longer read-only seed data.
   - Added MCP helper endpoints for the control room: tool catalog plus per-tool smoke execution.
   - Added an MCP Tools view so current tools can be tested from the UI instead of only from terminal workflows.
+- Follow-up refinement
+  - Renamed the main views into clearer Chinese-first labels and reduced ambiguous English copy in the console shell.
+  - Clarified that `连接中心` shows registered system connectors rather than live agent sessions.
+  - Clarified that `工具测试` shows the five `mcp-gateway` tools and can run per-tool smoke checks.
+  - Reframed the old Activity area into a troubleshooting-oriented `系统状态` page and added journal writing guidance.
 - Files changed
   - `apps/admin-web/src/main.ts`
   - `apps/admin-web/src/style.css`

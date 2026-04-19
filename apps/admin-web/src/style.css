@@ -367,8 +367,28 @@ button {
 
 .hero-panel h2 {
   margin: 12px 0 0;
-  font-size: clamp(1.9rem, 3vw, 3.3rem);
-  line-height: 1.06;
+  font-size: clamp(1.6rem, 2.4vw, 2.3rem);
+  line-height: 1.14;
+}
+
+.hero-panel__summary {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  border: 1px solid rgba(94, 111, 104, 0.12);
+  background: rgba(255, 255, 252, 0.56);
+}
+
+.hero-panel__summary strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.96rem;
+}
+
+.hero-panel__summary p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.65;
 }
 
 .hero-panel__tags,
@@ -389,6 +409,10 @@ button {
   border: 1px solid rgba(94, 111, 104, 0.16);
   color: var(--ink-soft);
   font-size: 0.88rem;
+}
+
+.tag-row--guide {
+  margin: 0 0 18px;
 }
 
 .hero-panel__side {

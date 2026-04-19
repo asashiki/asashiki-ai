@@ -140,34 +140,34 @@ const viewMeta: Record<
   }
 > = {
   overview: {
-    label: "Overview",
-    eyebrow: "Control Room",
-    description: "总览系统、数据流和今天最需要注意的信号。"
+    label: "总览",
+    eyebrow: "首页",
+    description: "先看系统是否在线、数据是否完整，以及今天最需要注意的地方。"
   },
   profile: {
-    label: "Profile",
-    eyebrow: "Editable Core",
-    description: "把核心文字资料从种子数据推进到可直接维护的控制台表单。"
+    label: "档案",
+    eyebrow: "可编辑核心",
+    description: "维护给你和 agent 共用的基础摘要、偏好和说明。"
   },
   journals: {
-    label: "Journals",
-    eyebrow: "Write Path",
-    description: "管理草稿、查看历史记录，并保持所有写入都经由 Core API。"
+    label: "记录",
+    eyebrow: "写入入口",
+    description: "随手记想法、经历、待办和上下文，所有写入都通过 Core API。"
   },
   connectors: {
-    label: "Connectors",
-    eyebrow: "Registry",
-    description: "查看连接状态、暴露边界和最近的连接异常。"
+    label: "连接中心",
+    eyebrow: "连接登记",
+    description: "这里看的是系统登记的连接器状态，不是外部 agent 的在线列表。"
   },
   tools: {
-    label: "MCP Tools",
-    eyebrow: "Verification",
-    description: "直接从控制台执行当前工具 smoke，确认 gateway 到后端的链路。"
+    label: "工具测试",
+    eyebrow: "MCP 网关",
+    description: "这里展示的是 mcp-gateway 暴露的工具，并可逐个做冒烟测试。"
   },
   activity: {
-    label: "Activity",
-    eyebrow: "Signals",
-    description: "把运行状态、审计事件和缺失数据集中放在一页里。"
+    label: "系统状态",
+    eyebrow: "运行与审计",
+    description: "集中查看服务运行、审计日志和缺失数据，排查问题时再进来。"
   }
 };
 
@@ -218,6 +218,83 @@ function formatNumber(value: number | null, suffix = "") {
   }
 
   return `${value}${suffix}`;
+}
+
+function formatConnectorStatus(status: Connector["status"]) {
+  switch (status) {
+    case "online":
+      return "在线";
+    case "degraded":
+      return "降级";
+    case "offline":
+      return "离线";
+    default:
+      return status;
+  }
+}
+
+function formatExposureLevel(exposureLevel: string) {
+  switch (exposureLevel) {
+    case "private-personal":
+      return "私密个人";
+    case "private-operational":
+      return "私密运行";
+    case "public-safe":
+      return "公开安全";
+    default:
+      return exposureLevel;
+  }
+}
+
+function formatToolTitle(tool: McpToolCatalogItem) {
+  switch (tool.id) {
+    case "read_profile_summary":
+      return "读取档案摘要";
+    case "get_recent_context":
+      return "读取最近上下文";
+    case "create_journal_draft":
+      return "创建记录草稿";
+    case "get_health_summary":
+      return "读取健康摘要";
+    case "get_connector_status":
+      return "读取连接状态";
+    default:
+      return tool.title;
+  }
+}
+
+function formatToolDescription(tool: McpToolCatalogItem) {
+  switch (tool.id) {
+    case "read_profile_summary":
+      return "读取当前保存的个人档案摘要，确认 agent 能拿到基础背景。";
+    case "get_recent_context":
+      return "读取最近草稿和状态提示，确认上下文摘要链路可用。";
+    case "create_journal_draft":
+      return "通过网关创建一条记录草稿，验证写入链路是否正常。";
+    case "get_health_summary":
+      return "读取当前健康摘要，不暴露原始明细。";
+    case "get_connector_status":
+      return "读取连接器摘要和当前状态，确认外部连接面是否可读。";
+    default:
+      return tool.description;
+  }
+}
+
+function formatResourceName(key: string) {
+  const names: Record<string, string> = {
+    coreHealth: "Core API 健康状态",
+    mcpHealth: "MCP Gateway 健康状态",
+    profile: "档案摘要",
+    journals: "记录数据",
+    healthSummary: "健康摘要",
+    latestHealth: "最新健康快照",
+    connectors: "连接器列表",
+    connectorSummary: "连接摘要",
+    recentAudit: "最近审计事件",
+    toolCatalog: "MCP 工具目录"
+  };
+
+  return names[key] ?? key;
 }
 
 function serializePreferences(topPreferences: string[]) {
@@ -331,56 +408,56 @@ async function loadDashboardResources(): Promise<DashboardResources> {
     loadResource("MCP Gateway 健康状态", () =>
       loadHealth(`${mcpGatewayBaseUrl}/health`, "MCP Gateway 健康状态")
     ),
-    loadResource("Profile", () =>
+    loadResource("档案摘要", () =>
       loadJson(
         `${coreApiBaseUrl}/api/profile/summary`,
         profileSummarySchema,
-        "Profile"
+        "档案摘要"
       )
     ),
-    loadResource("Journals", () =>
+    loadResource("记录数据", () =>
       loadJson(
         `${coreApiBaseUrl}/api/journals`,
         journalCollectionSchema,
-        "Journals"
+        "记录数据"
       )
     ),
-    loadResource("Health Summary", () =>
+    loadResource("健康摘要", () =>
       loadJson(
         `${coreApiBaseUrl}/api/health/summary`,
         healthSummarySchema,
-        "Health Summary"
+        "健康摘要"
       )
     ),
-    loadResource("Latest Health Snapshot", () =>
+    loadResource("最新健康快照", () =>
       loadJson(
         `${coreApiBaseUrl}/api/health/latest`,
         healthSnapshotSchema,
-        "Latest Health Snapshot"
+        "最新健康快照"
       )
     ),
-    loadResource("Connectors", () =>
+    loadResource("连接器列表", () =>
       loadJson(
         `${coreApiBaseUrl}/api/connectors`,
         connectorSchema.array(),
-        "Connectors"
+        "连接器列表"
       )
     ),
-    loadResource("Connector Summary", () =>
+    loadResource("连接摘要", () =>
       loadJson(
         `${coreApiBaseUrl}/api/connectors/summary`,
         connectorSummarySchema,
-        "Connector Summary"
+        "连接摘要"
       )
     ),
-    loadResource("Recent Audit", () =>
+    loadResource("最近审计事件", () =>
       loadJson(
         `${coreApiBaseUrl}/api/audit/recent`,
         auditEventSchema.array(),
-        "Recent Audit"
+        "最近审计事件"
       )
     ),
-    loadResource("MCP Tool Catalog", () =>
+    loadResource("MCP 工具目录", () =>
       loadJson(
         `${mcpGatewayBaseUrl}/tools/catalog`,
         {
@@ -389,7 +466,7 @@ async function loadDashboardResources(): Promise<DashboardResources> {
             return mcpToolCatalogSchema.parse(payload.tools ?? []);
           }
         },
-        "MCP Tool Catalog"
+        "MCP 工具目录"
       )
     )
   ]);
@@ -452,7 +529,7 @@ function renderResourceBanner(title: string, message: string, compact = false) {
   return `
     <section class="fallback-card ${compact ? "fallback-card--compact" : ""}">
       <div class="fallback-card__header">
-        <p>Unavailable</p>
+        <p>当前不可用</p>
         <h3>${escapeHtml(title)}</h3>
       </div>
       <p>${escapeHtml(message)}</p>
@@ -534,7 +611,7 @@ function renderTopStatus(resources: DashboardResources | null) {
       )}
       ${renderBadge(`数据流 ${readyCount}/${totalCount}`, readyCount === totalCount ? "good" : "warn")}
       ${renderBadge(
-        journals ? `Draft ${journals.drafts.length}` : "Draft 暂缺",
+        journals ? `草稿 ${journals.drafts.length}` : "草稿暂缺",
         journals ? "neutral" : "warn"
       )}
       ${renderBadge(
@@ -571,19 +648,23 @@ function renderOverview(resources: DashboardResources) {
   return `
     <section class="hero-panel">
       <div class="hero-panel__copy">
-        <p>Personal console</p>
-        <h2>${
-          profile
-            ? escapeHtml(profile.summary)
-            : "把控制台做成你真正愿意长期打开的个人工作台。"
-        }</h2>
+        <p>今日总览</p>
+        <h2>先确认系统和数据都还在线。</h2>
         <p class="hero-panel__lead">
           ${
             profile
-              ? `${escapeHtml(profile.displayName)} 的主控制面板，优先展示系统状态、连接健康和最近的写入痕迹。`
-              : "当前 profile 暂时不可读，但控制台仍会尽量呈现其余可用信息。"
+              ? `${escapeHtml(profile.displayName)} 的主控制面板。这里优先显示服务状态、连接情况和最近写入，不让你一上来就陷进技术细节。`
+              : "当前档案暂时不可读，但控制台仍会尽量把剩余可用信息整理出来。"
           }
         </p>
+        <div class="hero-panel__summary">
+          <strong>当前档案摘要</strong>
+          <p>${
+            profile
+              ? escapeHtml(profile.summary)
+              : "还没拿到档案摘要时，这里会保留位置并提示当前状态。"
+          }</p>
+        </div>
         <div class="hero-panel__tags">
           ${
             profile
@@ -596,12 +677,12 @@ function renderOverview(resources: DashboardResources) {
       </div>
       <div class="hero-panel__side">
         <div class="signal-block">
-          <span>Core API</span>
+          <span>核心服务</span>
           <strong>${coreHealth ? "在线" : "离线"}</strong>
           <small>${coreHealth ? `运行于 ${coreHealth.environment}` : "请先检查服务链路"}</small>
         </div>
         <div class="signal-block">
-          <span>MCP Gateway</span>
+          <span>MCP 网关</span>
           <strong>${mcpHealth ? "在线" : "离线"}</strong>
           <small>${toolCatalog ? `${toolCatalog.length} 个工具已登记` : "工具目录暂缺"}</small>
         </div>
@@ -610,13 +691,13 @@ function renderOverview(resources: DashboardResources) {
 
     <section class="metric-grid">
       ${renderMetricCard(
-        "Journals",
+        "记录草稿",
         journals ? `${journals.drafts.length}` : "—",
-        journals ? `${journals.entries.length} 条 entries` : "当前未能读取 journaling 数据",
+        journals ? `已归档 ${journals.entries.length} 条记录` : "当前未能读取记录数据",
         journals ? "neutral" : "warn"
       )}
       ${renderMetricCard(
-        "Connectors",
+        "连接器",
         connectorSummary
           ? `${connectorSummary.online}/${connectorSummary.total}`
           : "—",
@@ -626,7 +707,7 @@ function renderOverview(resources: DashboardResources) {
         connectorSummary && connectorSummary.offline === 0 ? "good" : "warn"
       )}
       ${renderMetricCard(
-        "Health",
+        "健康摘要",
         healthSummary ? formatNumber(healthSummary.stepCount) : "—",
         healthSummary
           ? `睡眠 ${formatNumber(healthSummary.sleepHours, "h")} · 静息心率 ${formatNumber(healthSummary.restingHeartRate)}`
@@ -634,9 +715,9 @@ function renderOverview(resources: DashboardResources) {
         healthSummary ? "neutral" : "warn"
       )}
       ${renderMetricCard(
-        "MCP Tools",
+        "MCP 工具",
         toolCatalog ? `${toolCatalog.length}` : "—",
-        toolCatalog ? "已可在控制台逐个 smoke" : "工具目录暂缺",
+        toolCatalog ? "已可在控制台逐个测试" : "工具目录暂缺",
         toolCatalog ? "good" : "warn"
       )}
     </section>
@@ -644,7 +725,7 @@ function renderOverview(resources: DashboardResources) {
     <section class="content-grid content-grid--overview">
       <article class="panel">
         <div class="panel__header">
-          <p>Attention</p>
+          <p>优先关注</p>
           <h3>当前最需要注意的地方</h3>
         </div>
         ${
@@ -661,7 +742,7 @@ function renderOverview(resources: DashboardResources) {
                   .map(
                     ([key, resource]) => `
                       <li>
-                        <strong>${escapeHtml(key)}</strong>
+                        <strong>${escapeHtml(formatResourceName(key))}</strong>
                         <span>${escapeHtml(
                           resource.status === "error"
                             ? resource.message
@@ -677,8 +758,8 @@ function renderOverview(resources: DashboardResources) {
       </article>
       <article class="panel">
         <div class="panel__header">
-          <p>Recent Activity</p>
-          <h3>最近系统痕迹</h3>
+          <p>最近动作</p>
+          <h3>最近写入和系统痕迹</h3>
         </div>
         ${
           recentAudit
@@ -698,10 +779,10 @@ function renderOverview(resources: DashboardResources) {
               </ul>
             `
             : renderResourceBanner(
-                "Recent Activity",
+                "最近动作",
                 resources.recentAudit.status === "error"
                   ? resources.recentAudit.message
-                  : "Recent Activity 暂缺。",
+                  : "最近动作暂缺。",
                 true
               )
         }
@@ -718,15 +799,15 @@ function renderProfile(resources: DashboardResources) {
     <section class="content-grid content-grid--profile">
       <article class="panel panel--form">
         <div class="panel__header">
-          <p>Editable Core</p>
-          <h3>Profile Summary</h3>
+          <p>可编辑核心</p>
+          <h3>档案摘要</h3>
         </div>
         ${
           canEdit
             ? `
               <form id="profile-form" class="editor-form">
                 <label>
-                  <span>Display Name</span>
+                  <span>显示名称</span>
                   <input
                     id="profile-display-name"
                     name="displayName"
@@ -738,7 +819,7 @@ function renderProfile(resources: DashboardResources) {
                   />
                 </label>
                 <label>
-                  <span>Summary</span>
+                  <span>摘要说明</span>
                   <textarea
                     id="profile-summary"
                     name="summary"
@@ -749,7 +830,7 @@ function renderProfile(resources: DashboardResources) {
                   >${escapeHtml(state.profileForm.summary)}</textarea>
                 </label>
                 <label>
-                  <span>Top Preferences</span>
+                  <span>重点偏好</span>
                   <textarea
                     id="profile-preferences"
                     name="topPreferences"
@@ -760,7 +841,7 @@ function renderProfile(resources: DashboardResources) {
                 </label>
                 <div class="panel__actions">
                   <button class="button button--primary" type="submit" ${state.savingProfile ? "disabled" : ""}>
-                    ${state.savingProfile ? "Saving..." : "Save Profile"}
+                    ${state.savingProfile ? "保存中..." : "保存档案"}
                   </button>
                   <button
                     class="button button--ghost"
@@ -768,22 +849,22 @@ function renderProfile(resources: DashboardResources) {
                     type="button"
                     ${state.savingProfile || !state.profileForm.dirty ? "disabled" : ""}
                   >
-                    Reset
+                    重置
                   </button>
                 </div>
               </form>
             `
             : renderResourceBanner(
-                "Profile Summary",
+                "档案摘要",
                 resources.profile.status === "error"
                   ? resources.profile.message
-                  : "Profile 数据暂缺。"
+                  : "档案数据暂缺。"
               )
         }
       </article>
       <article class="panel panel--preview">
         <div class="panel__header">
-          <p>Agent-facing View</p>
+          <p>面向 Agent</p>
           <h3>当前对 Agent 可见的摘要</h3>
         </div>
         ${
@@ -800,7 +881,7 @@ function renderProfile(resources: DashboardResources) {
               </section>
             `
             : renderEmptyState(
-                "Profile 暂不可读",
+                "档案暂不可读",
                 "当 Core API 或 Profile 数据暂时失联时，这里会提示当前不可预览。"
               )
         }
@@ -816,12 +897,21 @@ function renderJournals(resources: DashboardResources) {
     <section class="content-grid content-grid--journals">
       <article class="panel panel--form">
         <div class="panel__header">
-          <p>Write Through Core API</p>
+          <p>通过 Core API 写入</p>
           <h3>创建 Journal Draft</h3>
         </div>
+        <p class="panel__copy">
+          不知道写什么时，可以先写四类内容：今天发生了什么、临时想法、待办提醒、想留给 agent 的上下文。
+        </p>
+        <ul class="tag-row tag-row--guide">
+          <li>今天做了什么</li>
+          <li>当前卡点是什么</li>
+          <li>下一步准备做什么</li>
+          <li>要让 agent 记住什么</li>
+        </ul>
         <form id="journal-form" class="editor-form">
           <label>
-            <span>Title</span>
+            <span>标题</span>
             <input
               id="journal-title"
               name="title"
@@ -833,7 +923,7 @@ function renderJournals(resources: DashboardResources) {
             />
           </label>
           <label>
-            <span>Source</span>
+            <span>来源</span>
             <input
               id="journal-source"
               name="source"
@@ -844,7 +934,7 @@ function renderJournals(resources: DashboardResources) {
             />
           </label>
           <label>
-            <span>Content</span>
+            <span>内容</span>
             <textarea
               id="journal-content"
               name="content"
@@ -856,15 +946,15 @@ function renderJournals(resources: DashboardResources) {
           </label>
           <div class="panel__actions">
             <button class="button button--primary" type="submit" ${state.savingJournal ? "disabled" : ""}>
-              ${state.savingJournal ? "Saving..." : "Create Draft"}
+              ${state.savingJournal ? "保存中..." : "创建草稿"}
             </button>
           </div>
         </form>
       </article>
       <article class="panel">
         <div class="panel__header">
-          <p>Draft Queue</p>
-          <h3>当前 Drafts</h3>
+          <p>草稿队列</p>
+          <h3>当前草稿</h3>
         </div>
         ${
           journals
@@ -885,18 +975,18 @@ function renderJournals(resources: DashboardResources) {
               </ul>
             `
             : renderResourceBanner(
-                "Draft Queue",
+                "草稿队列",
                 resources.journals.status === "error"
                   ? resources.journals.message
-                  : "Journal 数据暂缺。"
+                  : "记录数据暂缺。"
               )
         }
       </article>
     </section>
     <section class="panel">
       <div class="panel__header">
-        <p>Published Entries</p>
-        <h3>已有 Entries</h3>
+        <p>已归档记录</p>
+        <h3>已有条目</h3>
       </div>
       ${
         journals
@@ -917,8 +1007,8 @@ function renderJournals(resources: DashboardResources) {
             </div>
           `
           : renderEmptyState(
-              "Entries 暂不可用",
-              "当 Journals 数据没拿到时，这里会保留版位并提示原因。"
+              "归档记录暂不可用",
+              "当记录数据没拿到时，这里会保留版位并提示原因。"
             )
       }
     </section>
@@ -930,27 +1020,37 @@ function renderConnectors(resources: DashboardResources) {
   const summary = asData(resources.connectorSummary);
 
   return `
+    <section class="panel">
+      <div class="panel__header">
+        <p>页面说明</p>
+        <h3>这里不是 agent 在线列表</h3>
+      </div>
+      <p class="panel__copy">
+        这里展示的是系统里已经登记的连接器或数据通道，例如后端服务、外部数据源、后续要接入的 Supabase 或其他同步器。
+        它更像“连接登记中心”，不是 Claude / Codex 当前在线人数。
+      </p>
+    </section>
     <section class="metric-grid">
       ${renderMetricCard(
-        "Total",
+        "已登记",
         summary ? `${summary.total}` : "—",
         summary ? "已登记连接数" : "摘要暂缺",
         "neutral"
       )}
       ${renderMetricCard(
-        "Online",
+        "在线",
         summary ? `${summary.online}` : "—",
         summary ? "当前正常在线" : "摘要暂缺",
         summary && summary.online > 0 ? "good" : "warn"
       )}
       ${renderMetricCard(
-        "Degraded",
+        "需关注",
         summary ? `${summary.degraded}` : "—",
         summary ? "需要人工关注" : "摘要暂缺",
         summary && summary.degraded === 0 ? "neutral" : "warn"
       )}
       ${renderMetricCard(
-        "Offline",
+        "离线",
         summary ? `${summary.offline}` : "—",
         summary ? "当前不可用" : "摘要暂缺",
         summary && summary.offline === 0 ? "good" : "warn"
@@ -966,11 +1066,7 @@ function renderConnectors(resources: DashboardResources) {
                   <article class="connector-card connector-card--${connector.status}">
                     <div class="connector-card__topline">
                       ${renderBadge(
-                        connector.status === "online"
-                          ? "Online"
-                          : connector.status === "degraded"
-                            ? "Degraded"
-                            : "Offline",
+                        formatConnectorStatus(connector.status),
                         connector.status === "online"
                           ? "good"
                           : connector.status === "degraded"
@@ -980,7 +1076,7 @@ function renderConnectors(resources: DashboardResources) {
                       <span>${escapeHtml(connector.kind)}</span>
                     </div>
                     <h3>${escapeHtml(connector.name)}</h3>
-                    <p>${escapeHtml(connector.exposureLevel)} · 最近看到于 ${formatDateTime(connector.lastSeenAt)}</p>
+                    <p>${escapeHtml(formatExposureLevel(connector.exposureLevel))} · 最近看到于 ${formatDateTime(connector.lastSeenAt)}</p>
                     <ul class="tag-row">
                       ${connector.capabilities
                         .map((capability) => `<li>${escapeHtml(capability)}</li>`)
@@ -998,10 +1094,10 @@ function renderConnectors(resources: DashboardResources) {
           </section>
         `
         : renderResourceBanner(
-            "Connector Center",
+            "连接中心",
             resources.connectors.status === "error"
               ? resources.connectors.message
-              : "Connector 数据暂缺。"
+              : "连接器数据暂缺。"
           )
     }
   `;
@@ -1014,11 +1110,11 @@ function renderTools(resources: DashboardResources) {
   return `
     <section class="panel">
       <div class="panel__header">
-        <p>Gateway Smoke</p>
-        <h3>逐个测试当前 MCP 工具</h3>
+        <p>页面说明</p>
+        <h3>这里是 mcp-gateway 的工具，不是连接状态页</h3>
       </div>
       <p class="panel__copy">
-        这些测试会直接打到 \`mcp-gateway\` 的工具 smoke 接口，用来确认当前工具链路是否还活着。
+        当前应该能看到 5 个工具。这里展示的是 \`mcp-gateway\` 暴露出来的工具目录，并可逐个测试它们有没有正常连到后端。
       </p>
     </section>
     ${
@@ -1033,11 +1129,11 @@ function renderTools(resources: DashboardResources) {
                 return `
                   <article class="tool-card">
                     <div class="tool-card__topline">
-                      ${renderBadge(tool.readOnlyHint ? "Read-only" : "Write path", tool.readOnlyHint ? "neutral" : "warn")}
+                      ${renderBadge(tool.readOnlyHint ? "只读" : "写入", tool.readOnlyHint ? "neutral" : "warn")}
                       <span>${escapeHtml(tool.id)}</span>
                     </div>
-                    <h3>${escapeHtml(tool.title)}</h3>
-                    <p>${escapeHtml(tool.description)}</p>
+                    <h3>${escapeHtml(formatToolTitle(tool))}</h3>
+                    <p>${escapeHtml(formatToolDescription(tool))}</p>
                     <div class="panel__actions panel__actions--compact">
                       <button
                         class="button button--ghost"
@@ -1045,7 +1141,7 @@ function renderTools(resources: DashboardResources) {
                         data-tool-test="${escapeHtml(tool.id)}"
                         ${!mcpReady || runState?.pending ? "disabled" : ""}
                       >
-                        ${runState?.pending ? "Testing..." : "Run Smoke"}
+                        ${runState?.pending ? "测试中..." : "开始测试"}
                       </button>
                     </div>
                     ${
@@ -1074,10 +1170,10 @@ function renderTools(resources: DashboardResources) {
           </section>
         `
         : renderResourceBanner(
-            "MCP Tool Catalog",
+            "MCP 工具目录",
             resources.toolCatalog.status === "error"
               ? resources.toolCatalog.message
-              : "MCP Tool Catalog 暂缺。"
+              : "MCP 工具目录暂缺。"
           )
     }
   `;
@@ -1090,10 +1186,19 @@ function renderActivity(resources: DashboardResources) {
   const recentAudit = asData(resources.recentAudit);
 
   return `
+    <section class="panel">
+      <div class="panel__header">
+        <p>页面说明</p>
+        <h3>这个页面主要用于排查问题</h3>
+      </div>
+      <p class="panel__copy">
+        平时你主要看总览、档案、记录和工具测试。只有当服务抽风、某块数据缺失，或者你想知道最近到底写进去了什么时，再来这里。
+      </p>
+    </section>
     <section class="content-grid content-grid--activity">
       <article class="panel">
         <div class="panel__header">
-          <p>Runtime</p>
+          <p>运行状态</p>
           <h3>服务运行状态</h3>
         </div>
         <ul class="stack-list stack-list--dense">
@@ -1106,14 +1211,14 @@ function renderActivity(resources: DashboardResources) {
             <span>${mcpHealth ? `在线 · ${formatNumber(mcpHealth.uptimeSeconds, "s")}` : getResourceError(resources.mcpHealth)}</span>
           </li>
           <li>
-            <strong>Latest Health Snapshot</strong>
+            <strong>最新健康快照</strong>
             <span>${latestHealth ? `${formatDateTime(latestHealth.capturedAt)} · ${escapeHtml(latestHealth.note ?? "无备注")}` : getResourceError(resources.latestHealth)}</span>
           </li>
         </ul>
       </article>
       <article class="panel">
         <div class="panel__header">
-          <p>Audit Trail</p>
+          <p>审计日志</p>
           <h3>最近审计事件</h3>
         </div>
         ${
@@ -1134,10 +1239,10 @@ function renderActivity(resources: DashboardResources) {
               </ul>
             `
             : renderResourceBanner(
-                "Audit Trail",
+                "审计日志",
                 resources.recentAudit.status === "error"
                   ? resources.recentAudit.message
-                  : "Audit 数据暂缺。",
+                  : "审计数据暂缺。",
                 true
               )
         }
@@ -1145,7 +1250,7 @@ function renderActivity(resources: DashboardResources) {
     </section>
     <section class="panel">
       <div class="panel__header">
-        <p>Data Surfaces</p>
+        <p>数据完整度</p>
         <h3>当前数据面是否完整</h3>
       </div>
       <div class="availability-grid">
@@ -1153,9 +1258,9 @@ function renderActivity(resources: DashboardResources) {
           .map(
             ([key, resource]) => `
               <article class="availability-card">
-                <strong>${escapeHtml(key)}</strong>
+                <strong>${escapeHtml(formatResourceName(key))}</strong>
                 ${renderBadge(
-                  resource.status === "ready" ? "Ready" : "Issue",
+                  resource.status === "ready" ? "正常" : "异常",
                   resource.status === "ready" ? "good" : "bad"
                 )}
                 <p>${escapeHtml(
@@ -1201,16 +1306,16 @@ function renderShell() {
       <aside class="sidebar">
         <div class="sidebar__brand">
           <span class="sidebar__eyebrow">Asashiki</span>
-          <strong>Personal Console</strong>
+          <strong>个人控制台</strong>
           <p>安静、克制、可长期使用的个人控制台。</p>
         </div>
         <nav class="sidebar__nav">
           ${renderNav()}
         </nav>
         <div class="sidebar__foot">
-          <p>Current Step</p>
-          <strong>Admin-first Console</strong>
-          <small>Milestone 8 · slice 1</small>
+          <p>当前阶段</p>
+          <strong>控制台优先</strong>
+          <small>Milestone 8 · 第一批</small>
         </div>
       </aside>
       <section class="workspace">
@@ -1222,7 +1327,7 @@ function renderShell() {
           </div>
           <div class="topbar__actions">
             <button id="refresh-button" class="button button--ghost" type="button" ${state.loading ? "disabled" : ""}>
-              ${state.loading ? "Refreshing..." : "Refresh"}
+              ${state.loading ? "刷新中..." : "刷新"}
             </button>
           </div>
         </header>
@@ -1343,7 +1448,7 @@ async function saveProfile() {
   if (!parsed.success) {
     state.flash = {
       tone: "error",
-      text: "Profile 表单还不完整，请检查名称、摘要和偏好列表。"
+      text: "档案表单还不完整，请检查名称、摘要和偏好列表。"
     };
     renderShell();
     return;
@@ -1363,14 +1468,14 @@ async function saveProfile() {
     });
 
     if (!response.ok) {
-      throw new Error(`Profile 保存失败，响应 ${response.status}`);
+      throw new Error(`档案保存失败，响应 ${response.status}`);
     }
 
     const saved = profileSummarySavedSchema.parse(await response.json());
     state.profileForm.dirty = false;
     state.flash = {
       tone: "success",
-      text: `已更新 Profile：${saved.displayName}`
+      text: `已更新档案：${saved.displayName}`
     };
     await refreshData(true);
   } catch (error) {
@@ -1379,7 +1484,7 @@ async function saveProfile() {
       text:
         error instanceof Error
           ? error.message
-          : "保存 Profile 时发生未知错误。"
+          : "保存档案时发生未知错误。"
     };
   } finally {
     state.savingProfile = false;
@@ -1393,7 +1498,7 @@ async function createJournalDraft() {
   if (!content) {
     state.flash = {
       tone: "error",
-      text: "Journal content 不能为空。"
+      text: "记录内容不能为空。"
     };
     renderShell();
     return;
@@ -1437,7 +1542,7 @@ async function createJournalDraft() {
       text:
         error instanceof Error
           ? error.message
-          : "创建 journal draft 时发生未知错误。"
+          : "创建记录草稿时发生未知错误。"
     };
   } finally {
     state.savingJournal = false;
@@ -1467,7 +1572,7 @@ async function runToolTest(toolId: string) {
     };
     state.flash = {
       tone: "success",
-      text: `MCP 工具 ${toolId} 已完成 smoke。`
+      text: `MCP 工具 ${toolId} 已完成测试。`
     };
     await refreshData(true);
   } catch (error) {

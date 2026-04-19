@@ -65,12 +65,12 @@ asashiki-ai-foundation-kit/
 
 ## Admin Dashboard 当前能力
 
-- `Overview`: 查看系统总览、数据流完整度和最近注意事项
-- `Profile`: 直接在控制台编辑 profile summary 与 top preferences
-- `Journals`: 查看 drafts / entries，并通过表单创建新的 journal draft
-- `Connectors`: 查看连接器状态、能力、暴露等级与最近错误
-- `MCP Tools`: 读取工具目录并逐个执行 smoke test
-- `Activity`: 查看 Core API / MCP Gateway 运行状态、审计事件和数据面完整度
+- `总览`: 先看系统在线情况、数据流完整度和最近需要注意的异常
+- `档案`: 直接在控制台编辑 profile summary 与 top preferences
+- `记录`: 查看草稿 / 已归档条目，并通过表单创建新的 journal draft
+- `连接中心`: 查看系统登记的连接器状态、能力、暴露等级与最近错误；这不是 agent 在线列表
+- `工具测试`: 读取 `mcp-gateway` 当前暴露的工具目录，并逐个执行 smoke test
+- `系统状态`: 查看 Core API / MCP Gateway 运行状态、审计事件和数据面完整度，用于排查问题
 
 当前 `admin-web` 已支持“局部失败可见”：当服务抽风、某几项数据取不到时，控制台仍会保留页面结构，并明确提示哪些数据面不可用。
 
