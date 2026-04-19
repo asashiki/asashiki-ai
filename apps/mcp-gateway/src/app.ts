@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServiceHealth, serviceManifestSchema } from "@asashiki/schemas";
 import { parseServiceEnv } from "@asashiki/config";
 import { z } from "zod";

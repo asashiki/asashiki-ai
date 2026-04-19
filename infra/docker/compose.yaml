@@ -5,14 +5,13 @@ services:
       dockerfile: infra/docker/Dockerfile
       target: runtime
     command: ["pnpm", "--filter", "@asashiki/core-api", "start"]
-    env_file:
-      - ../../.env.production
     environment:
-      CORE_API_HOST: 0.0.0.0
-      CORE_API_PORT: 4100
-      CORE_API_DB_PATH: /data/core-api.sqlite
+      NODE_ENV: ${NODE_ENV:-production}
+      CORE_API_HOST: ${CORE_API_HOST:-0.0.0.0}
+      CORE_API_PORT: ${CORE_API_PORT:-4100}
+      CORE_API_DB_PATH: ${CORE_API_DB_PATH:-/data/core-api.sqlite}
     ports:
-      - "${CORE_API_BIND_HOST:-127.0.0.1}:4100:4100"
+      - "${CORE_API_BIND_HOST:-127.0.0.1}:${CORE_API_PORT:-4100}:${CORE_API_PORT:-4100}"
     volumes:
       - core_api_data:/data
     restart: unless-stopped
@@ -34,14 +33,13 @@ services:
       dockerfile: infra/docker/Dockerfile
       target: runtime
     command: ["pnpm", "--filter", "@asashiki/mcp-gateway", "start"]
-    env_file:
-      - ../../.env.production
     environment:
-      MCP_GATEWAY_HOST: 0.0.0.0
-      MCP_GATEWAY_PORT: 4200
-      MCP_CORE_API_BASE_URL: http://core-api:4100
+      NODE_ENV: ${NODE_ENV:-production}
+      MCP_GATEWAY_HOST: ${MCP_GATEWAY_HOST:-0.0.0.0}
+      MCP_GATEWAY_PORT: ${MCP_GATEWAY_PORT:-4200}
+      MCP_CORE_API_BASE_URL: ${MCP_CORE_API_BASE_URL:-http://core-api:4100}
     ports:
-      - "${MCP_GATEWAY_BIND_HOST:-127.0.0.1}:4200:4200"
+      - "${MCP_GATEWAY_BIND_HOST:-127.0.0.1}:${MCP_GATEWAY_PORT:-4200}:${MCP_GATEWAY_PORT:-4200}"
     depends_on:
       core-api:
         condition: service_healthy

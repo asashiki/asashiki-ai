@@ -234,6 +234,8 @@ After each milestone, append:
   - Added production environment templates for VPS services and static frontend builds.
   - Synced README, ops handbook, recommended stack, and research notes with the deployment conclusion.
   - Follow-up fix: corrected the Core API production build so bundled output keeps the `node:sqlite` import and can start from `dist/server.js`.
+  - Follow-up fix: corrected the MCP Gateway production import paths so `node dist/server.js` can resolve the MCP SDK under Node ESM.
+  - Follow-up fix: changed Docker Compose guidance to require `--env-file .env.production` so host port bindings and container env values come from the same source.
 - Files changed
   - `.dockerignore`
   - `.env.production.example`
@@ -254,6 +256,7 @@ After each milestone, append:
   - `pnpm build`
   - `pnpm typecheck`
   - direct `node dist/server.js` health check on Core API with a temporary database path
+  - direct `node dist/server.js` health check on MCP Gateway with a temporary port
   - `node -e "require('./infra/pm2/ecosystem.config.cjs')"`
   - `pnpm smoke`
   - Docker Compose file reviewed statically; CLI validation was skipped because Docker is not installed in the current environment
@@ -265,5 +268,7 @@ After each milestone, append:
   - Prefer Docker Compose for first deployment because it expresses two-service dependencies and SQLite persistence more clearly than PM2.
   - Treat remote Admin deployment as optional for the very first rollout so it does not block Public + Core + MCP go-live.
   - Keep the service bundle approach for now and patch the emitted `sqlite` import post-build instead of reworking the whole packaging pipeline.
+  - Use `.js` suffixes only on MCP SDK wildcard subpaths such as `server/mcp.js` and `server/streamableHttp.js`, while keeping fixed-root exports such as `@modelcontextprotocol/sdk/client` unsuffixed.
+  - Drive Compose interpolation with `docker compose --env-file .env.production` instead of relying on service-level `env_file` for host port binding.
 - Next milestone readiness
   - The repository now has enough deployment/runbook material to enter hardening work such as auth finalization, storage stabilization, and release automation.

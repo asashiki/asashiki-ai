@@ -92,10 +92,12 @@ cp .env.production.example .env.production
 - `CORE_API_BIND_HOST=0.0.0.0`
 - `MCP_GATEWAY_BIND_HOST=0.0.0.0`
 
+⚠️ 这里要注意：Compose 的 `ports:` 插值不会读取服务级 `env_file`。当前正确做法是让 `docker compose` 自己通过 `--env-file .env.production` 读取这些变量。
+
 2. 构建并启动服务
 
 ```bash
-docker compose -f infra/docker/compose.yaml up -d --build
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
 ```
 
 当前仓库里的 `core-api` build 已内置一个小修正步骤，会把 tsup 错改的 `sqlite` 导入恢复成 `node:sqlite`，避免 `dist/server.js` 在生产环境误报缺少 `sqlite` 包。
@@ -103,8 +105,8 @@ docker compose -f infra/docker/compose.yaml up -d --build
 3. 初始化数据库
 
 ```bash
-docker compose -f infra/docker/compose.yaml run --rm core-api pnpm --filter @asashiki/core-api db:init
-docker compose -f infra/docker/compose.yaml run --rm core-api pnpm --filter @asashiki/core-api db:seed
+docker compose --env-file .env.production -f infra/docker/compose.yaml run --rm core-api pnpm --filter @asashiki/core-api db:init
+docker compose --env-file .env.production -f infra/docker/compose.yaml run --rm core-api pnpm --filter @asashiki/core-api db:seed
 ```
 
 4. 检查健康状态
@@ -142,6 +144,33 @@ pm2 save
 ```bash
 pm2 startup
 ```
+
+### 5.4 NPM 反代场景的生产示例
+
+`.env.production` 可写成：
+
+```dotenv
+NODE_ENV=production
+CORE_API_BIND_HOST=0.0.0.0
+CORE_API_HOST=0.0.0.0
+CORE_API_PORT=4100
+CORE_API_DB_PATH=/data/core-api.sqlite
+MCP_GATEWAY_BIND_HOST=0.0.0.0
+MCP_GATEWAY_HOST=0.0.0.0
+MCP_GATEWAY_PORT=4200
+MCP_CORE_API_BASE_URL=http://core-api:4100
+```
+
+然后使用：
+
+```bash
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
+```
+
+此时 NPM 可直接反代到宿主机：
+
+- `http://127.0.0.1:4100` 或 `http://<VPS_IP>:4100`
+- `http://127.0.0.1:4200` 或 `http://<VPS_IP>:4200`
 
 ## 6. Cloudflare plan
 
