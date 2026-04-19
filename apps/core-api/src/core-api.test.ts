@@ -7,7 +7,49 @@ import Fastify from "fastify";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createCoreApiApp } from "./app.js";
+import { createCoreApiApp, loadCoreApiEnv } from "./app.js";
+
+test("empty optional integrations do not block core-api startup", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "asashiki-core-api-empty-env-"));
+  const databasePath = join(directory, "core-api.sqlite");
+  const env = loadCoreApiEnv({
+    NODE_ENV: "test",
+    CORE_API_HOST: "127.0.0.1",
+    CORE_API_PORT: "4100",
+    CORE_API_DB_PATH: databasePath,
+    REMOTE_MCP_SERVERS_JSON: "",
+    SUPABASE_TIME_LOG_URL: "",
+    SUPABASE_TIME_LOG_BEARER_TOKEN: "",
+    SUPABASE_TIME_LOG_NAME: ""
+  });
+  const { server } = await createCoreApiApp({
+    env,
+    logger: false,
+    seed: true
+  });
+
+  try {
+    assert.equal(env.REMOTE_MCP_SERVERS_JSON, undefined);
+    assert.equal(env.SUPABASE_TIME_LOG_URL, undefined);
+    assert.equal(env.SUPABASE_TIME_LOG_BEARER_TOKEN, undefined);
+    assert.equal(env.SUPABASE_TIME_LOG_NAME, "Supabase 时间日志");
+
+    const health = await server.inject({
+      method: "GET",
+      url: "/health"
+    });
+    assert.equal(health.statusCode, 200);
+
+    const timeLogRecent = await server.inject({
+      method: "GET",
+      url: "/api/time-log/recent?limit=1"
+    });
+    assert.equal(timeLogRecent.statusCode, 503);
+  } finally {
+    await server.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("seeded core api serves profile, journals, remote mcp, connectors and audit", async () => {
   const directory = mkdtempSync(join(tmpdir(), "asashiki-core-api-"));

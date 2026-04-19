@@ -173,11 +173,13 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
   const connectorId = options.connectorId ?? "connector-supabase-time-log";
   const connectorName = options.connectorName ?? "Supabase 时间日志";
   const cacheTtlMs = options.cacheTtlMs ?? 5 * 60 * 1000;
+  const integrationEnabled =
+    typeof options.url === "string" && options.url.trim().length > 0;
   let cache: TimeLogCache | null = null;
 
   async function fetchEvents(force = false) {
-    if (!options.url) {
-      throw new Error("Supabase 时间日志 URL 未配置。");
+    if (!integrationEnabled || !options.url) {
+      throw new Error("Supabase time-log integration is not enabled.");
     }
 
     if (!force && cache && cache.expiresAt > Date.now()) {
@@ -198,7 +200,7 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
     });
 
     if (!response.ok) {
-      throw new Error(`Supabase 时间日志读取失败，响应 ${response.status}。`);
+      throw new Error(`Supabase time-log read failed with ${response.status}.`);
     }
 
     const payload = await response.json();
@@ -224,8 +226,12 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
   }
 
   return {
+    isEnabled() {
+      return integrationEnabled;
+    },
+
     async getConnector() {
-      if (!options.url) {
+      if (!integrationEnabled) {
         return connectorSchema.parse({
           id: connectorId,
           name: connectorName,
@@ -233,7 +239,7 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
           status: "offline",
           lastSeenAt: new Date(0).toISOString(),
           lastSuccessAt: null,
-          lastError: "Supabase 时间日志 URL 未配置。",
+          lastError: "Supabase time-log integration is not enabled.",
           capabilities: ["time-log-read", "time-point-lookup"],
           exposureLevel: "private-personal"
         });
@@ -263,7 +269,7 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
           lastError:
             error instanceof Error
               ? error.message
-              : "Supabase 时间日志连接失败。",
+              : "Supabase time-log connection failed.",
           capabilities: ["time-log-read", "time-point-lookup"],
           exposureLevel: "private-personal"
         });
@@ -299,7 +305,7 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
           queriedAt: payload.at,
           matched: true,
           strategy: "contains",
-          message: "找到了覆盖这个时刻的时间日志。",
+          message: "Found a time-log entry covering that moment.",
           event: containing,
           distanceMinutes: 0
         });
@@ -315,9 +321,7 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
       if (previous) {
         const distanceMinutes = Math.max(
           0,
-          Math.round(
-            (target - new Date(previous.startedAt).getTime()) / 60_000
-          )
+          Math.round((target - new Date(previous.startedAt).getTime()) / 60_000)
         );
 
         if (distanceMinutes <= 24 * 60) {
@@ -326,7 +330,8 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
             queriedAt: payload.at,
             matched: true,
             strategy: "nearest-previous",
-            message: "没有精确覆盖记录，已返回这个时刻之前最近的一条时间日志。",
+            message:
+              "No exact covering entry was found, so the nearest previous time-log entry was returned.",
             event: previous,
             distanceMinutes
           });
@@ -338,7 +343,7 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
         queriedAt: payload.at,
         matched: false,
         strategy: "not-found",
-        message: "这个时刻附近没有找到可用时间日志。",
+        message: "No usable time-log entry was found near that moment.",
         event: null,
         distanceMinutes: null
       });

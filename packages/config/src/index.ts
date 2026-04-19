@@ -51,3 +51,11 @@ export function getOptionalString(
   const value = source[key]?.trim();
   return value && value.length > 0 ? value : fallback;
 }
+
+export function getOptionalEnvValue(
+  source: Record<string, string | undefined>,
+  key: string
+) {
+  const value = source[key]?.trim();
+  return value && value.length > 0 ? value : undefined;
+}

@@ -68,6 +68,7 @@ SUPABASE_MCP_ACCESS_TOKEN=替换成你的真实 token
 - `REMOTE_MCP_SERVERS_JSON` 是上游 MCP 注册表
 - `bearerTokenEnv` 表示这个 MCP 要去哪个环境变量里取 Bearer Token
 - token 不放前端，也不写死在仓库
+- 不配置这一段时，远程 MCP 功能视为未启用，但不会阻断主系统启动
 
 ### 3.3 旧的时间日志试点变量
 
@@ -80,6 +81,16 @@ SUPABASE_TIME_LOG_NAME=Supabase 时间日志
 ```
 
 这条链路继续用于“某个时间点我在做什么”的业务查询。
+
+启用判定：
+
+- `SUPABASE_TIME_LOG_URL` 有值：time-log integration 启用
+- `SUPABASE_TIME_LOG_URL` 为空：time-log integration 未启用
+
+重要原则：
+
+- 未配置的可选集成不能阻断整个 app 启动
+- 所以即使 `SUPABASE_TIME_LOG_URL` 和 `SUPABASE_TIME_LOG_BEARER_TOKEN` 都留空，只要主系统配置没问题，`core-api` 也必须能启动
 
 ## 4. 首轮部署命令
 

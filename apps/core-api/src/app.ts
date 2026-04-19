@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
-import { parseServiceEnv } from "@asashiki/config";
+import { getOptionalEnvValue, parseServiceEnv } from "@asashiki/config";
 import {
   connectorSchema,
   connectorSummarySchema,
@@ -43,11 +43,15 @@ export function loadCoreApiEnv(source: NodeJS.ProcessEnv): CoreApiEnv {
     HOST: source.CORE_API_HOST ?? source.HOST,
     PORT: source.CORE_API_PORT ?? source.PORT,
     CORE_API_DB_PATH: source.CORE_API_DB_PATH ?? "./data/core-api.sqlite",
-    REMOTE_MCP_SERVERS_JSON: source.REMOTE_MCP_SERVERS_JSON,
-    SUPABASE_TIME_LOG_URL: source.SUPABASE_TIME_LOG_URL,
-    SUPABASE_TIME_LOG_BEARER_TOKEN: source.SUPABASE_TIME_LOG_BEARER_TOKEN,
+    REMOTE_MCP_SERVERS_JSON: getOptionalEnvValue(source, "REMOTE_MCP_SERVERS_JSON"),
+    SUPABASE_TIME_LOG_URL: getOptionalEnvValue(source, "SUPABASE_TIME_LOG_URL"),
+    SUPABASE_TIME_LOG_BEARER_TOKEN: getOptionalEnvValue(
+      source,
+      "SUPABASE_TIME_LOG_BEARER_TOKEN"
+    ),
     SUPABASE_TIME_LOG_NAME:
-      source.SUPABASE_TIME_LOG_NAME ?? "Supabase 时间日志"
+      getOptionalEnvValue(source, "SUPABASE_TIME_LOG_NAME") ??
+      "Supabase 时间日志"
   };
 
   return coreApiEnvSchema.parse(

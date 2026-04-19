@@ -441,3 +441,28 @@ After each milestone, append:
 - Decisions taken
   - Keep deployment instructions centered on `docker compose --env-file .env.production -f infra/docker/compose.yaml ...`
   - Treat env propagation issues as a deployment-layer bug, not an app-layer bug
+
+## Milestone 8 stability follow-up
+
+- Summary
+  - Fixed `core-api` env loading so empty optional integration variables are normalized to “not configured” instead of failing schema validation.
+  - Clarified the distinction between Remote MCP config and the optional dedicated Supabase time-log source.
+  - Added a regression test to ensure unconfigured optional integrations do not block app startup.
+- Files changed
+  - `packages/config/src/index.ts`
+  - `apps/core-api/src/app.ts`
+  - `apps/core-api/src/connectors/supabase-time-log.ts`
+  - `apps/core-api/src/core-api.test.ts`
+  - `.env.example`
+  - `.env.production.example`
+  - `README.md`
+  - `asashiki-ai-foundation-kit/docs/04-api-and-mcp-surface.md`
+  - `asashiki-ai-foundation-kit/docs/09-deployment-basics.md`
+- Validation run
+  - `pnpm --filter @asashiki/core-api typecheck`
+  - `pnpm --filter @asashiki/core-api test`
+  - `pnpm typecheck`
+  - `pnpm test`
+- Decisions taken
+  - Optional integrations must never become startup hard dependencies just because an env file contains empty strings.
+  - The dedicated time-log source is considered enabled only when `SUPABASE_TIME_LOG_URL` is present with a non-empty value.

@@ -115,6 +115,12 @@ pnpm db:seed
 - 在控制台里测试单个工具
 - 把这些上游连接汇总进连接中心
 
+重要原则：
+
+- 未配置的可选集成不能阻断整个 app 启动
+- 留空的可选环境变量会被视为“未启用”
+- 只有真正启用后，相关接口才会去连接对应集成
+
 ### 配置方式
 
 本地或 VPS `.env` / `.env.production` 中填写：
@@ -168,6 +174,16 @@ SUPABASE_MCP_ACCESS_TOKEN=
    - 用来接任意上游 MCP，并在控制台里查看和测试
 2. 专用时间日志试点
    - 用来先把“时间点查询”这个具体功能跑通
+
+### Time-log integration 的启用判定
+
+当前 time-log integration 的启用条件很简单：
+
+- `SUPABASE_TIME_LOG_URL` 有有效值：视为启用
+- `SUPABASE_TIME_LOG_URL` 为空：视为未启用
+
+`SUPABASE_TIME_LOG_BEARER_TOKEN` 只是附加凭据，不再是启动强依赖。
+也就是说，即使你完全没有配置 time-log source，只要主系统配置没问题，`core-api` 也必须正常启动。
 
 后面如果要把时间日志完全切到 Supabase MCP 直连，会在现有通用层之上再做一层业务适配，而不是继续手搓新的特例架构。
 
