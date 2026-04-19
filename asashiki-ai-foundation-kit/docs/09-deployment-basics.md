@@ -10,11 +10,12 @@
 
 第一阶段仍然保持简单：
 
-- Public Web 走 Cloudflare Pages
+- Public Web 只做本地 preview
 - Core API 与 MCP Gateway 走单台 VPS
 - 不做 k8s
 - 不做多机
 - 不做复杂 secret manager
+- 不改 `asashiki.com` 主站
 
 ## 2. Deployment decision
 
@@ -66,18 +67,19 @@
 
 ## 5. First deployment walkthrough
 
-### 5.1 Public Web on Cloudflare Pages
+### 5.1 Public Web local preview only
 
-构建目录：
-- `apps/public-web/dist`
+当前阶段不正式发布 `public-web` 到 Cloudflare Pages。
 
-建议的 Pages build 设置：
-- Root directory: repository root
-- Build command: `pnpm install --frozen-lockfile && pnpm --filter @asashiki/public-web build`
-- Build output directory: `apps/public-web/dist`
+只要求本地验证三件事：
 
-前端运行时变量：
-- `VITE_CORE_API_BASE_URL=https://api.example.com`
+- `pnpm --filter @asashiki/public-web dev`
+- `pnpm --filter @asashiki/public-web build`
+- `pnpm --filter @asashiki/public-web preview`
+
+如需本地预览当前公开 API，可在 `apps/public-web/.env` 中设置：
+
+- `VITE_CORE_API_BASE_URL=http://127.0.0.1:4100`
 
 ### 5.2 VPS services with Docker Compose
 
@@ -161,6 +163,8 @@ MCP_GATEWAY_PORT=4200
 MCP_CORE_API_BASE_URL=http://core-api:4100
 ```
 
+这是当前仓库在 NPM 反代模式下的 known good 示例。
+
 然后使用：
 
 ```bash
@@ -171,6 +175,58 @@ docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --b
 
 - `http://127.0.0.1:4100` 或 `http://<VPS_IP>:4100`
 - `http://127.0.0.1:4200` 或 `http://<VPS_IP>:4200`
+
+### 5.5 Known good deployment flow
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
+docker compose --env-file .env.production -f infra/docker/compose.yaml run --rm core-api pnpm --filter @asashiki/core-api db:init
+docker compose --env-file .env.production -f infra/docker/compose.yaml run --rm core-api pnpm --filter @asashiki/core-api db:seed
+docker compose --env-file .env.production -f infra/docker/compose.yaml ps
+curl http://127.0.0.1:4100/health
+curl http://127.0.0.1:4200/health
+curl https://api.asashiki.com/health
+curl https://mcp.asashiki.com/health
+```
+
+### 5.6 Rollback / stop services
+
+停服：
+
+```bash
+docker compose --env-file .env.production -f infra/docker/compose.yaml down
+```
+
+重建当前代码：
+
+```bash
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
+```
+
+如果刚 `git pull` 后出现新问题，回退到上一次已验证 commit 后，再重新执行上面的重建命令。
+
+### 5.7 Predictable update flow
+
+```bash
+git pull
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
+docker compose --env-file .env.production -f infra/docker/compose.yaml ps
+curl http://127.0.0.1:4100/health
+curl http://127.0.0.1:4200/health
+```
+
+### 5.8 Claude MCP smoke test
+
+最小 smoke 目标：
+
+1. Claude 连接 `https://mcp.asashiki.com/mcp`
+2. `listTools` 返回 5 个工具
+3. `read_profile_summary` 成功
+4. `get_connector_status` 或 `get_health_summary` 成功
+5. `create_journal_draft` 成功
+
+完成后，再用 Admin 或 Core API 检查新 draft 是否真的落库。
 
 ## 6. Cloudflare plan
 
@@ -204,6 +260,13 @@ docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --b
 2. MCP Gateway 的 `MCP_CORE_API_BASE_URL` 是否仍指向可达的 Core API
 3. `GET /health` 与 `GET /tools` 是否先成功
 
+### Symptom: Public domains return 502 under NPM mode
+先查：
+1. `docker compose --env-file .env.production -f infra/docker/compose.yaml ps`
+2. 如果仍显示 `127.0.0.1:4100->4100/tcp` 或 `127.0.0.1:4200->4200/tcp`，先修 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST`
+3. 确认是否真的使用了 `--env-file .env.production`
+4. 不要先查 Cloudflare 或 NPM 规则
+
 ### Symptom: Admin can open but write fails
 先查：
 1. Admin 前端的 `VITE_CORE_API_BASE_URL` 是否指到 private Core API
@@ -228,11 +291,14 @@ docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --b
 ## 8. First deployment checklist
 
 - `.env.production` 已创建
-- Public Web 已在 Pages 构建成功
 - `core-api` 与 `mcp-gateway` 健康检查通过
-- Tunnel / DNS 指向正确
-- `api-internal` 与 `mcp` 已加 Access
-- public 域名只暴露 `public/*`
+- `docker compose --env-file .env.production -f infra/docker/compose.yaml ps` 已检查
+- `curl http://127.0.0.1:4100/health` 通过
+- `curl http://127.0.0.1:4200/health` 通过
+- `curl https://api.asashiki.com/health` 通过
+- `curl https://mcp.asashiki.com/health` 通过
+- Claude MCP smoke 已通过
+- `public-web` 只做本地 preview，不做正式发布
 
 ## 9. Next upgrade boundary
 

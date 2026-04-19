@@ -1,6 +1,6 @@
 # Asashiki AI Foundation
 
-当前仓库已进入 Milestone 6：基础部署手册、Docker Compose / PM2 样例、Cloudflare Tunnel 样例与子域规划已补齐，可支撑首轮部署预演。
+当前仓库已完成 Milestone 7，下一步进入 Milestone 8：重点从“部署跑稳”转向“让 `admin-web` 成为主控制台”，并接入第一个真实外部数据源试点。
 
 ## 当前结构
 
@@ -102,6 +102,22 @@ asashiki-ai-foundation-kit/
 
 当前服务容器默认仅绑定到 `127.0.0.1`；如需配合 NPM 等反代场景对外监听，可在 `.env.production` 中改写 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 为 `0.0.0.0`，并使用 `docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build` 让 Compose 同时读取端口映射和容器环境变量。
 
+## 当前发布边界
+
+- 已验证并允许：VPS 上的 `core-api` / `mcp-gateway`、NPM 反代、Cloudflare 域名路由、Claude 远程 MCP smoke
+- 只做本地预览：`public-web`
+- 当前不做：`asashiki.com` 主站替换、Public Web 正式 Cloudflare Pages 发布、Admin Dashboard 正式公网发布
+
+## 下一阶段方向
+
+- `admin-web` 优先：把核心文本数据与连接器状态尽量搬到控制台里管理
+- `public-web` 冻结：当前不继续扩展公开页面
+- MCP / 连接器先由 Codex 接入：控制台先负责查看、启用/禁用、测试
+- 第一个真实外部数据源试点：Supabase 时间日志只读接入
+
+具体执行方案见：
+- [10-admin-first-execution-plan.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/docs/10-admin-first-execution-plan.md)
+
 ## 数据初始化
 
 ```bash
@@ -116,6 +132,8 @@ pnpm install
 pnpm db:init
 pnpm db:seed
 pnpm build
+pnpm --filter @asashiki/public-web dev
+pnpm --filter @asashiki/public-web preview
 pnpm typecheck
 pnpm test
 pnpm smoke

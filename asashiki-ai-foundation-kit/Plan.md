@@ -148,3 +148,53 @@
 ### Validation
 - 文档 walkthrough
 - 手工部署预演
+
+---
+
+## Milestone 7 — Post-MVP Stabilization + Public Web Preview
+
+### Goal
+把已跑通的 MVP 收敛成可重复部署、可重复 smoke、可本地预览的稳定基线，但不扩大公开发布面。
+
+### Deliverables
+- 基于真实 VPS 经验修订的部署/运维手册
+- 可重复的 VPS + MCP + Claude smoke checklist
+- `public-web` 本地 `dev/build/preview` 流程
+- 明确的回滚 / 停服说明
+
+### Acceptance criteria
+- 新人按文档可重复完成 VPS 启动与 Claude MCP smoke
+- NPM 反代模式下的 Compose 绑定规则已明确写清
+- `public-web` 可在本地构建并 preview
+- `asashiki.com` 主站仍不受影响
+
+### Validation
+- 文档 walkthrough
+- 本地 `public-web` dev/build/preview 验证
+- VPS smoke checklist review
+
+---
+
+## Milestone 8 — Admin-first Console + Connector Pilot
+
+### Goal
+把项目从“开发者能维护的系统”推进到“你能主要通过控制台使用和管理的系统”，并接入第一个真实外部数据源试点。
+
+### Deliverables
+- `admin-web` 优先改造为主控制台
+- Profile / Journal 等核心文本数据的查看与编辑能力
+- Connector Center：查看连接状态、说明、启用状态、测试结果
+- MCP Test Center：列出当前工具并执行 smoke 测试
+- 第一个真实外部连接器试点：Supabase 时间日志只读接入
+
+### Acceptance criteria
+- 你可以主要通过 `admin-web` 查看和修改核心文本数据，而不是频繁进终端
+- 每个已接入 MCP / 连接器都能在控制台中看到状态与测试结果
+- Supabase 时间日志可通过控制台验证，并可通过 MCP 回答典型查询
+- `public-web` 不继续扩大范围，仍保持冻结/本地预览状态
+
+### Validation
+- `admin-web` 本地 smoke
+- Connector / MCP 测试页验证
+- Supabase 时间日志试点查询验证
+- 代码完成后执行 `git push`

@@ -2,10 +2,10 @@
 
 ## Current status
 
-- Project phase: Deployment basics and handbook sync completed
-- Active milestone: Milestone 6
-- Code status: Deployment templates and docs completed locally
-- Deployment status: first-deploy handbook ready, production rollout not yet executed
+- Project phase: Milestone 7 completed; Milestone 8 execution plan prepared
+- Active milestone: Milestone 8
+- Code status: next phase now targets admin-first console work and the first real connector pilot
+- Deployment status: VPS + domain + Claude MCP path verified; public-web remains local-preview only
 
 ## Decisions frozen so far
 
@@ -24,6 +24,8 @@
 - Milestone 4 introduces a reusable public-status widget package for static frontends.
 - Milestone 5 uses the official stable `@modelcontextprotocol/sdk` package for the first real MCP tool surface.
 - Milestone 6 recommends Docker Compose as the default VPS deployment path and keeps PM2 as a fallback path.
+- Milestone 7 keeps `public-web` out of formal production rollout and treats it as local-preview only.
+- Milestone 8 prioritizes `admin-web` as the main operator surface and keeps complex connector onboarding Codex-managed first.
 
 ## MVP modules
 
@@ -53,6 +55,8 @@
 - MCP server implementation detail
 - Health data ingestion path
 - Admin remote deployment strategy should be finalized before first public release
+- Public Web visual and data shape are still expected to iterate before any real Pages launch
+- The first real external data-source pilot should be Supabase time logs rather than a more complex live health-data integration
 
 ## What to update during execution
 
@@ -272,3 +276,48 @@ After each milestone, append:
   - Drive Compose interpolation with `docker compose --env-file .env.production` instead of relying on service-level `env_file` for host port binding.
 - Next milestone readiness
   - The repository now has enough deployment/runbook material to enter hardening work such as auth finalization, storage stabilization, and release automation.
+
+## Milestone 7 result
+
+- Summary
+  - Hardened deployment docs with the real NPM reverse-proxy lesson: bind host and Compose env loading must be checked before Cloudflare/NPM debugging.
+  - Updated the production env example so NPM-mode binding defaults are explicit.
+  - Added a known-good deployment flow, stop/rollback notes, and a Claude MCP smoke checklist.
+  - Added `public-web` local preview flow and kept it explicitly out of formal production rollout.
+- Files changed
+  - `.env.production.example`
+  - `apps/public-web/package.json`
+  - `README.md`
+  - `asashiki-ai-foundation-kit/Plan.md`
+  - `asashiki-ai-foundation-kit/docs/05-ops-handbook.md`
+  - `asashiki-ai-foundation-kit/docs/09-deployment-basics.md`
+  - `asashiki-ai-foundation-kit/Documentation.md`
+- Validation run
+  - `pnpm --filter @asashiki/public-web build`
+  - `pnpm --filter @asashiki/public-web dev`
+  - `pnpm --filter @asashiki/public-web preview`
+  - local HTTP checks for public-web dev and preview responses
+- Problems found
+  - Public Web is still iteration-stage and should not be treated as production-ready.
+  - Runtime still inherits Node 24 `node:sqlite` experimental warning from Core API services.
+- Decisions taken
+  - Treat NPM reverse-proxy mode as the default documented VPS mode.
+  - Require `docker compose --env-file .env.production` in all production examples.
+  - Keep `public-web` in local preview only until UI and public data shape stabilize.
+- Next milestone readiness
+  - The repo is now ready for a narrower hardening phase instead of another architecture expansion.
+
+## Milestone 8 planning note
+
+- Summary
+  - The next execution round should focus on `admin-web` rather than `public-web`.
+  - MCP / connector onboarding remains Codex-managed first, with the UI focused on status, testing, and basic enable/disable controls.
+  - The first real external connector pilot should be a Supabase time-log read path.
+- Planned files
+  - `asashiki-ai-foundation-kit/Plan.md`
+  - `asashiki-ai-foundation-kit/docs/10-admin-first-execution-plan.md`
+  - `README.md`
+- Planned validation
+  - admin local smoke
+  - connector/MCP test-page smoke
+  - Supabase pilot query smoke

@@ -34,6 +34,7 @@ pnpm dev:web
 - admin 保护策略已选定
 - VPS 上的启动方式已定（默认 `Docker Compose`，备用 `PM2`）
 - `api-internal` 与 `mcp` 的 Access 规则已配置
+- 如走 NPM 反代，默认采用 `.env.production.example` 中的 `0.0.0.0` 绑定
 
 ### Deployment asset map
 - Docker Compose: `infra/docker/compose.yaml`
@@ -105,15 +106,41 @@ pnpm dev:web
 ### Docker Compose checks
 1. `.env.production` 存在
 2. `docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build` 成功
-3. `docker compose -f infra/docker/compose.yaml ps` 中两个服务均为 `healthy` 或 `running`
+3. `docker compose --env-file .env.production -f infra/docker/compose.yaml ps` 中两个服务均为 `healthy` 或 `running`
 4. `docker compose -f infra/docker/compose.yaml logs` 中无循环崩溃
-5. 如走 NPM/宿主机反代，确认 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 是否需要改为 `0.0.0.0`
+5. 如走 NPM/宿主机反代，确认 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 为 `0.0.0.0`
+6. 如果 `docker compose ps` 仍显示 `127.0.0.1:4100->4100/tcp` 或 `127.0.0.1:4200->4200/tcp`，优先检查 bind host 与 Compose env loading，不要先查 Cloudflare / NPM
+
+### VPS acceptance checklist
+1. `docker compose --env-file .env.production -f infra/docker/compose.yaml ps`
+2. `curl http://127.0.0.1:4100/health`
+3. `curl http://127.0.0.1:4200/health`
+4. `curl https://api.asashiki.com/health`
+5. `curl https://mcp.asashiki.com/health`
+
+### Claude MCP smoke checklist
+1. Claude 连接 `https://mcp.asashiki.com/mcp`
+2. `listTools` 返回 5 个工具
+3. `read_profile_summary` 成功
+4. `get_recent_context` 或 `get_health_summary` 成功
+5. `create_journal_draft` 成功，并能在 Admin 或 Core API 数据中看到新增 draft
+
+### Public Web local preview checklist
+1. `pnpm --filter @asashiki/public-web dev` 可启动
+2. `pnpm --filter @asashiki/public-web build` 通过
+3. `pnpm --filter @asashiki/public-web preview` 可返回页面
+4. 页面能渲染当前公开 cards 或显示预期 fallback
 
 ### PM2 checks
 1. `pnpm build` 已执行
 2. `pm2 start infra/pm2/ecosystem.config.cjs --env production` 成功
 3. `pm2 save` 已执行
 4. `pm2 startup` 已执行并完成系统注册
+
+### Stop / rollback
+1. 停服：`docker compose --env-file .env.production -f infra/docker/compose.yaml down`
+2. 仅重建单服务：`docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build core-api`
+3. 如新镜像异常，优先回到上一次已验证的 commit 后重新执行 `docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build`
 
 ## 4. When adding a new feature
 
