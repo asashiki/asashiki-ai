@@ -424,3 +424,20 @@ After each milestone, append:
   - Do not automatically proxy all upstream tools through `mcp-gateway`; keep the project MCP surface curated and explicit.
 - Next milestone readiness
   - The next step can now focus on picking one real upstream MCP or data source at a time and turning it from “connected and testable” into a dedicated business feature when it proves useful.
+
+## Milestone 8 deployment follow-up
+
+- Summary
+  - Fixed Docker Compose so the `core-api` container now receives remote MCP and time-log related environment variables at runtime.
+  - Rewrote the deployment runbook into a cleaner UTF-8 version with a concrete VPS update flow.
+- Files changed
+  - `infra/docker/compose.yaml`
+  - `asashiki-ai-foundation-kit/docs/09-deployment-basics.md`
+- Validation run
+  - Static diff review completed
+  - Local `docker compose config` validation could not be executed in this environment because Docker CLI is not installed
+- Problems found
+  - Before this fix, a VPS could pull the latest code but still fail to activate remote MCP features because Compose was not forwarding the new env vars into `core-api`.
+- Decisions taken
+  - Keep deployment instructions centered on `docker compose --env-file .env.production -f infra/docker/compose.yaml ...`
+  - Treat env propagation issues as a deployment-layer bug, not an app-layer bug
