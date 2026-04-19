@@ -12,7 +12,7 @@ services:
       CORE_API_PORT: 4100
       CORE_API_DB_PATH: /data/core-api.sqlite
     ports:
-      - "127.0.0.1:4100:4100"
+      - "${CORE_API_BIND_HOST:-127.0.0.1}:4100:4100"
     volumes:
       - core_api_data:/data
     restart: unless-stopped
@@ -41,7 +41,7 @@ services:
       MCP_GATEWAY_PORT: 4200
       MCP_CORE_API_BASE_URL: http://core-api:4100
     ports:
-      - "127.0.0.1:4200:4200"
+      - "${MCP_GATEWAY_BIND_HOST:-127.0.0.1}:4200:4200"
     depends_on:
       core-api:
         condition: service_healthy

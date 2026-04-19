@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsup src/server.ts --format esm",
+    "build": "tsup src/server.ts --format esm && node scripts/fix-node-sqlite.mjs",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "db:init": "tsx src/cli/init-db.ts",

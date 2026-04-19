@@ -233,12 +233,14 @@ After each milestone, append:
   - Added executable deployment templates for Docker Compose, PM2, and Cloudflare Tunnel.
   - Added production environment templates for VPS services and static frontend builds.
   - Synced README, ops handbook, recommended stack, and research notes with the deployment conclusion.
+  - Follow-up fix: corrected the Core API production build so bundled output keeps the `node:sqlite` import and can start from `dist/server.js`.
 - Files changed
   - `.dockerignore`
   - `.env.production.example`
   - `apps/public-web/.env.production.example`
   - `apps/admin-web/.env.production.example`
   - `apps/core-api/package.json`
+  - `apps/core-api/scripts/fix-node-sqlite.mjs`
   - `apps/mcp-gateway/package.json`
   - `infra/docker/*`
   - `infra/pm2/ecosystem.config.cjs`
@@ -251,7 +253,9 @@ After each milestone, append:
 - Validation run
   - `pnpm build`
   - `pnpm typecheck`
+  - direct `node dist/server.js` health check on Core API with a temporary database path
   - `node -e "require('./infra/pm2/ecosystem.config.cjs')"`
+  - `pnpm smoke`
   - Docker Compose file reviewed statically; CLI validation was skipped because Docker is not installed in the current environment
 - Problems found
   - `docker` CLI is not available in the current environment, so `docker compose config` could not be executed locally.
@@ -260,5 +264,6 @@ After each milestone, append:
   - Keep public static hosting on Cloudflare Pages and private services on a single VPS.
   - Prefer Docker Compose for first deployment because it expresses two-service dependencies and SQLite persistence more clearly than PM2.
   - Treat remote Admin deployment as optional for the very first rollout so it does not block Public + Core + MCP go-live.
+  - Keep the service bundle approach for now and patch the emitted `sqlite` import post-build instead of reworking the whole packaging pipeline.
 - Next milestone readiness
   - The repository now has enough deployment/runbook material to enter hardening work such as auth finalization, storage stabilization, and release automation.

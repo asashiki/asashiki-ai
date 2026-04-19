@@ -87,11 +87,18 @@
 cp .env.production.example .env.production
 ```
 
+如果你的反代需要直接访问宿主机公开端口，例如当前用 NPM 从宿主机转发到容器端口，可把：
+
+- `CORE_API_BIND_HOST=0.0.0.0`
+- `MCP_GATEWAY_BIND_HOST=0.0.0.0`
+
 2. 构建并启动服务
 
 ```bash
 docker compose -f infra/docker/compose.yaml up -d --build
 ```
+
+当前仓库里的 `core-api` build 已内置一个小修正步骤，会把 tsup 错改的 `sqlite` 导入恢复成 `node:sqlite`，避免 `dist/server.js` 在生产环境误报缺少 `sqlite` 包。
 
 3. 初始化数据库
 
@@ -180,6 +187,8 @@ pm2 startup
 2. `docker compose -f infra/docker/compose.yaml logs mcp-gateway`
 3. `.env.production` 是否遗漏 `MCP_CORE_API_BASE_URL`
 4. volume 中的 SQLite 路径是否与 `CORE_API_DB_PATH` 一致
+5. `core-api` 的 `dist/server.js` 是否仍然保留了 `node:sqlite` 导入，而不是错误的 `sqlite`
+6. 是否误用了旧镜像或旧容器，导致修正后的 build 产物没有进入当前运行实例
 
 ### Symptom: PM2 starts but reboot后服务没回来
 先查：

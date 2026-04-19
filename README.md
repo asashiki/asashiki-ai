@@ -100,6 +100,8 @@ asashiki-ai-foundation-kit/
   - [apps/public-web/.env.production.example](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/public-web/.env.production.example)
   - [apps/admin-web/.env.production.example](/C:/Users/Hey/Desktop/asashiki-ai-foundation/apps/admin-web/.env.production.example)
 
+当前服务容器默认仅绑定到 `127.0.0.1`；如需配合 NPM 等反代场景对外监听，可在 `.env.production` 中改写 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 为 `0.0.0.0`。
+
 ## 数据初始化
 
 ```bash

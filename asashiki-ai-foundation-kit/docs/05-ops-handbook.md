@@ -107,6 +107,7 @@ pnpm dev:web
 2. `docker compose -f infra/docker/compose.yaml up -d --build` 成功
 3. `docker compose -f infra/docker/compose.yaml ps` 中两个服务均为 `healthy` 或 `running`
 4. `docker compose -f infra/docker/compose.yaml logs` 中无循环崩溃
+5. 如走 NPM/宿主机反代，确认 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 是否需要改为 `0.0.0.0`
 
 ### PM2 checks
 1. `pnpm build` 已执行
