@@ -10,6 +10,9 @@ services:
       CORE_API_HOST: ${CORE_API_HOST:-0.0.0.0}
       CORE_API_PORT: ${CORE_API_PORT:-4100}
       CORE_API_DB_PATH: ${CORE_API_DB_PATH:-/data/core-api.sqlite}
+      ASASHIKI_ARCHIVE_ROOT: ${ASASHIKI_ARCHIVE_ROOT:-/archive}
+      ASASHIKI_DIARY_DIR: ${ASASHIKI_DIARY_DIR:-}
+      ADMIN_PANEL_TOKEN: ${ADMIN_PANEL_TOKEN:-}
       REMOTE_MCP_SERVERS_JSON: ${REMOTE_MCP_SERVERS_JSON:-}
       SUPABASE_MCP_ACCESS_TOKEN: ${SUPABASE_MCP_ACCESS_TOKEN:-}
       SUPABASE_TIME_LOG_URL: ${SUPABASE_TIME_LOG_URL:-}
@@ -19,6 +22,7 @@ services:
       - "${CORE_API_BIND_HOST:-127.0.0.1}:${CORE_API_PORT:-4100}:${CORE_API_PORT:-4100}"
     volumes:
       - core_api_data:/data
+      - ${ASASHIKI_ARCHIVE_HOST_PATH:-/opt/asashiki/Asashiki_Archive}:/archive:ro
     restart: unless-stopped
     healthcheck:
       test:

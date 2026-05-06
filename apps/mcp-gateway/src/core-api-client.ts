@@ -1,4 +1,8 @@
 import {
+  archiveDiaryEntrySchema,
+  archiveDiaryListSchema,
+  archiveDiaryReadInputSchema,
+  archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   healthSummarySchema,
@@ -90,6 +94,44 @@ export function createCoreApiClient(baseUrl: string) {
         summary: connectorSummarySchema.parse(await summaryResponse.json()),
         connectors: connectorSchema.array().parse(await connectorsResponse.json())
       };
+    },
+
+    async getArchiveStatus() {
+      const response = await fetch(resolveUrl(baseUrl, "/api/archive/status"));
+
+      if (!response.ok) {
+        throw new Error("Failed to load archive status from Core API.");
+      }
+
+      return archiveStatusSchema.parse(await response.json());
+    },
+
+    async listDiaryEntries(limit = 20) {
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/archive/diary?limit=${limit}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to list archive diary entries from Core API.");
+      }
+
+      return archiveDiaryListSchema.parse(await response.json());
+    },
+
+    async readDiaryEntry(input: unknown) {
+      const payload = archiveDiaryReadInputSchema.parse(input);
+      const response = await fetch(
+        resolveUrl(
+          baseUrl,
+          `/api/archive/diary/${encodeURIComponent(payload.date)}`
+        )
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to read archive diary entry from Core API.");
+      }
+
+      return archiveDiaryEntrySchema.parse(await response.json());
     },
 
     async getRecentTimeLog(limit = 5) {

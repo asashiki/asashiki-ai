@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Fastify from "fastify";
@@ -9,7 +9,16 @@ import { createMcpGatewayApp } from "../app.js";
 
 const directory = mkdtempSync(join(tmpdir(), "asashiki-mcp-smoke-"));
 const databasePath = join(directory, "core-api.sqlite");
+const archiveRoot = join(directory, "Asashiki_Archive");
+const diaryPath = join(archiveRoot, "Obsidian_Asashiki", "日记");
 const upstream = Fastify({ logger: false });
+
+mkdirSync(diaryPath, { recursive: true });
+writeFileSync(
+  join(diaryPath, "2026-05-03.md"),
+  "# 2026-05-03\n\nMCP smoke 读取 Archive 日记。",
+  "utf8"
+);
 
 upstream.get("/time_events", async () => [
   {
@@ -32,6 +41,9 @@ const { server: coreApi } = await createCoreApiApp({
     PORT: 4100,
     NODE_ENV: "test",
     CORE_API_DB_PATH: databasePath,
+    ASASHIKI_ARCHIVE_ROOT: archiveRoot,
+    ASASHIKI_DIARY_DIR: undefined,
+    ADMIN_PANEL_TOKEN: undefined,
     SUPABASE_TIME_LOG_URL: `${upstreamAddress}/time_events`,
     SUPABASE_TIME_LOG_BEARER_TOKEN: undefined,
     SUPABASE_TIME_LOG_NAME: "Supabase 时间日志"
@@ -73,8 +85,8 @@ try {
   await client.connect(transport);
 
   const tools = await client.listTools();
-  if (tools.tools.length < 6) {
-    throw new Error("Expected at least 6 MCP tools.");
+  if (tools.tools.length < 9) {
+    throw new Error("Expected at least 9 MCP tools.");
   }
 
   const profile = await client.callTool({
@@ -94,6 +106,18 @@ try {
     }
   });
 
+  const archiveStatus = await client.callTool({
+    name: "get_archive_status",
+    arguments: {}
+  });
+
+  const diary = await client.callTool({
+    name: "read_diary_entry",
+    arguments: {
+      date: "2026-05-03"
+    }
+  });
+
   const draft = await client.callTool({
     name: "create_journal_draft",
     arguments: {
@@ -103,7 +127,14 @@ try {
     }
   });
 
-  if (profile.isError || health.isError || timeLogLookup.isError || draft.isError) {
+  if (
+    profile.isError ||
+    health.isError ||
+    timeLogLookup.isError ||
+    archiveStatus.isError ||
+    diary.isError ||
+    draft.isError
+  ) {
     throw new Error("One or more MCP tool calls returned tool errors.");
   }
 

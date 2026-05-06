@@ -1,265 +1,145 @@
 # Asashiki AI Foundation
 
-当前仓库已经进入 Milestone 8 的控制台优先阶段。
-现在的重点不是继续铺公开站，而是把 `admin-web` 做成你真正能长期使用的个人 AI 控制台，并把外部能力通过“可登记、可查看、可测试”的方式接进来。
+这是一个准备长期部署在 VPS 上的个人 MCP 应用。
 
-## 当前结构
+它的核心目标不是做一个漂亮网页，而是做一个属于 Asashiki 的个人 AI 中枢：Claude、ChatGPT、Codex、Claude Code 和其他支持 MCP 的 agent 可以连接这个 MCP 服务，读取安全摘要、写入日记草稿、查看连接器状态，并逐步接入更多个人数据源和常用 MCP。
 
-```text
-apps/
-  admin-web/
-  core-api/
-  mcp-gateway/
-  public-web/
-packages/
-  config/
-  schemas/
-asashiki-ai-foundation-kit/
-  Prompt.md
-  Plan.md
-  Documentation.md
-```
+## 当前生产入口
 
-`asashiki-ai-foundation-kit/` 保留为规划与文档区；实际运行代码在根目录的 `apps/` 与 `packages/`。
-
-## 快速开始
-
-1. 安装依赖
-
-   ```bash
-   pnpm install
-   ```
-
-2. 复制环境变量模板
-
-   ```powershell
-   Copy-Item ".env.example" ".env"
-   ```
-
-3. 启动后端服务
-
-   ```bash
-   pnpm dev:services
-   ```
-
-4. 启动控制台
-
-   ```bash
-   pnpm --filter @asashiki/admin-web dev
-   ```
-
-5. 打开控制台
-
-   - [http://127.0.0.1:3001](http://127.0.0.1:3001)
-
-如需初始化本地数据库：
-
-```bash
-pnpm db:init
-pnpm db:seed
-```
-
-## 默认端口
-
-- Public Web: `3000`
-- Admin Web: `3001`
-- Core API: `4100`
-- MCP Gateway: `4200`
-
-## 项目目前是什么
-
-你可以把它理解成一个“个人 AI 控制台后台”：
+当前重点只看两个服务：
 
 - `core-api`
-  - 管理档案、记录、健康摘要、连接器、审计日志
-  - 现在还负责连接上游远程 MCP 服务器，并把它们整理成控制台可读的状态和工具目录
+  - 端口：`4100`
+  - 负责数据、状态、Archive、连接器和远程 MCP 注册。
+  - 极简文字状态页：`/console`
 - `mcp-gateway`
-  - 暴露你自己的项目 MCP 工具面
-  - 当前仍然是小而明确的内部工具，不等于任意上游 MCP 直通代理
-- `admin-web`
-  - 你主要使用的控制台
-  - 现在已支持档案编辑、记录写入、连接中心、工具测试、局部失败可见
-- `public-web`
-  - 目前只保留本地预览，不作为当前阶段重点
+  - 端口：`4200`
+  - 对外 MCP 入口：`/mcp`
+  - 给 Claude / ChatGPT / Codex 等 agent 使用。
 
-## Admin Dashboard 当前能力
+`admin-web` 和 `public-web` 暂时保留，但不再是当前生产重点。后续如果要做网页，会重新按“状态查看面板”方向设计，不先投入到复杂前端。
 
-- `总览`
-  - 查看服务在线状态、数据面完整度和需要注意的异常
-- `档案`
-  - 直接编辑 `profile summary` 和 `top preferences`
-- `记录`
-  - 查看草稿 / 归档记录，并创建新的 journal draft
-- `连接中心`
-  - 查看系统连接器状态
-  - 查看已接入的上游远程 MCP
-  - 浏览上游 MCP 工具目录
-  - 直接在控制台里测试单个上游工具
-- `工具测试`
-  - 查看 `mcp-gateway` 当前暴露的内部工具
-  - 对每个内部工具做 smoke test
-- `系统状态`
-  - 查看 Core API / MCP Gateway 健康状态、审计事件和数据面完整度
+## VPS Archive
 
-当前控制台支持“局部失败可见”：当某些接口拿不到数据时，页面不会整页崩掉，而是保留结构并明确提示哪个数据面失联。
+VPS 上的个人资料目录：
 
-## 上游远程 MCP 接入
-
-这一轮开始，项目不再只围绕某个 Supabase 特例入口，而是新增了“通用远程 MCP 注册表”。
-
-当前 `core-api` 支持：
-
-- 通过 `REMOTE_MCP_SERVERS_JSON` 登记多个远程 MCP
-- 在服务端主动连接这些远程 MCP
-- 读取它们的工具目录
-- 在控制台里测试单个工具
-- 把这些上游连接汇总进连接中心
-
-重要原则：
-
-- 未配置的可选集成不能阻断整个 app 启动
-- 留空的可选环境变量会被视为“未启用”
-- 只有真正启用后，相关接口才会去连接对应集成
-
-### 配置方式
-
-本地或 VPS `.env` / `.env.production` 中填写：
-
-```env
-REMOTE_MCP_SERVERS_JSON=[{"id":"supabase","name":"Supabase Remote MCP","url":"https://mcp.supabase.com/mcp?project_ref=zwpopwhdfmqtamkdcwkb&read_only=true","description":"只读 Supabase MCP","bearerTokenEnv":"SUPABASE_MCP_ACCESS_TOKEN"}]
-SUPABASE_MCP_ACCESS_TOKEN=
+```text
+/opt/asashiki/Asashiki_Archive
 ```
 
-字段说明尽量保持最小：
+Docker 中会只读挂载为：
 
-- `id`
-- `name`
-- `url`
-- `description`
-- `bearerTokenEnv` 可选，表示去哪个环境变量里取 Bearer Token
+```text
+/archive
+```
 
-现阶段这类连接器仍由 Codex 帮你接入；控制台先负责“看状态、看工具、做测试”。
+日记目录自动查找顺序：
 
-### 关于 Supabase MCP 的现实说明
+1. `ASASHIKI_DIARY_DIR` 指定的目录
+2. `/archive/Obsidian_Asashiki/日记`
+3. `/archive/日记`
 
-如果你在 Codex / Claude Code 里配置过：
+当前已经支持通过 Core API / MCP 读取历史日记：
 
-- `https://mcp.supabase.com/mcp?project_ref=...&read_only=true`
+- `GET /api/archive/status`
+- `GET /api/archive/diary`
+- `GET /api/archive/diary/:date`
+- MCP 工具：`get_archive_status`
+- MCP 工具：`list_diary_entries`
+- MCP 工具：`read_diary_entry`
 
-那说明“你的本机 MCP 客户端能连 Supabase MCP”。
-但项目自己的后端在 VPS 上运行时，不会自动复用你本机 IDE 的登录态。
+## 当前 MCP 工具
 
-对于服务器侧 / CI 风格接入，Supabase 官方文档明确给出了 Bearer Token 方式，所以当前项目对 Supabase 远程 MCP 的推荐落地方式是：
-
-- 项目后端使用同一个 MCP URL
-- 通过 `Authorization: Bearer ...` 在服务端访问
-- Token 存在环境变量里，不放到前端
-
-参考：
-- [Supabase MCP Docs](https://supabase.com/docs/guides/getting-started/mcp)
-
-## Supabase 时间日志试点
-
-项目里还保留了一个业务试点：
-
-- `GET /api/time-log/recent`
-- `GET /api/time-log/lookup?at=...`
-
-它用来回答“某个时间点我在做什么”。
-当前这条链路仍基于专用时间日志读取实现，方便先把业务体验跑通。
-
-这意味着当前仓库里同时存在两层能力：
-
-1. 通用远程 MCP 注册表
-   - 用来接任意上游 MCP，并在控制台里查看和测试
-2. 专用时间日志试点
-   - 用来先把“时间点查询”这个具体功能跑通
-
-### Time-log integration 的启用判定
-
-当前 time-log integration 的启用条件很简单：
-
-- `SUPABASE_TIME_LOG_URL` 有有效值：视为启用
-- `SUPABASE_TIME_LOG_URL` 为空：视为未启用
-
-`SUPABASE_TIME_LOG_BEARER_TOKEN` 只是附加凭据，不再是启动强依赖。
-也就是说，即使你完全没有配置 time-log source，只要主系统配置没问题，`core-api` 也必须正常启动。
-
-后面如果要把时间日志完全切到 Supabase MCP 直连，会在现有通用层之上再做一层业务适配，而不是继续手搓新的特例架构。
-
-## MCP Gateway 当前能力
-
-当前项目自己的 MCP 工具面仍然保持“小而明确”：
+`mcp-gateway` 暴露给 agent 的工具包括：
 
 - `read_profile_summary`
 - `get_recent_context`
 - `create_journal_draft`
 - `get_health_summary`
 - `get_connector_status`
+- `get_archive_status`
+- `list_diary_entries`
+- `read_diary_entry`
 - `lookup_time_log_at`
 
-MCP 服务入口：
-
-- `http://127.0.0.1:4200/mcp`
-
-控制台辅助入口：
-
-- `GET /tools/catalog`
-- `POST /tools/:toolId/test`
-
-## 生产部署提醒
-
-VPS + Docker Compose + NPM 反代已经验证过。
-
-如果是 NPM / 宿主机 IP 转发模式，记得：
-
-- `.env.production` 里用 `CORE_API_BIND_HOST=0.0.0.0`
-- `.env.production` 里用 `MCP_GATEWAY_BIND_HOST=0.0.0.0`
-- 所有生产命令都带：
-
-```bash
-docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
-```
-
-如果 `docker compose ps` 里仍显示：
-
-- `127.0.0.1:4100->4100/tcp`
-- `127.0.0.1:4200->4200/tcp`
-
-那先查 bind host 和 Compose env loading，不要先查 Cloudflare / NPM。
-
-## 当前发布边界
-
-- 已验证并允许
-  - VPS 上的 `core-api` / `mcp-gateway`
-  - NPM 反代
-  - Cloudflare 域名路由
-  - Claude 远程 MCP smoke
-- 只做本地预览
-  - `public-web`
-- 当前不做
-  - `asashiki.com` 主站替换
-  - Public Web 正式 Cloudflare Pages 发布
-  - Admin Dashboard 正式公网发布
-
-## 验证命令
+## 本地开发
 
 ```bash
 pnpm install
 pnpm db:init
 pnpm db:seed
-pnpm build
-pnpm typecheck
-pnpm test
-pnpm smoke
-pnpm --filter @asashiki/public-web dev
-pnpm --filter @asashiki/public-web preview
-pnpm public:snapshot
+pnpm dev:services
 ```
 
-## 进一步阅读
+本地检查：
 
-- [asashiki-ai-foundation-kit/Documentation.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/Documentation.md)
-- [asashiki-ai-foundation-kit/docs/04-api-and-mcp-surface.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/docs/04-api-and-mcp-surface.md)
-- [asashiki-ai-foundation-kit/docs/09-deployment-basics.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/docs/09-deployment-basics.md)
-- [asashiki-ai-foundation-kit/docs/11-remote-mcp-registry.md](/C:/Users/Hey/Desktop/asashiki-ai-foundation/asashiki-ai-foundation-kit/docs/11-remote-mcp-registry.md)
+```bash
+curl http://127.0.0.1:4100/health
+curl http://127.0.0.1:4200/health
+curl http://127.0.0.1:4100/console
+```
+
+## VPS 更新
+
+VPS 项目路径：
+
+```bash
+/root/apps/asashiki-ai/asashiki-ai
+```
+
+标准更新流程：
+
+```bash
+cd /root/apps/asashiki-ai/asashiki-ai
+git pull origin main
+docker compose --env-file .env.production -f infra/docker/compose.yaml down
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
+docker compose --env-file .env.production -f infra/docker/compose.yaml ps
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:4100/health
+curl http://127.0.0.1:4200/health
+curl https://api.asashiki.com/health
+curl https://mcp.asashiki.com/health
+```
+
+Archive 检查：
+
+```bash
+curl http://127.0.0.1:4100/api/archive/status
+curl http://127.0.0.1:4100/api/archive/diary
+```
+
+## 生产环境变量重点
+
+NPM 反代模式下必须使用：
+
+```env
+CORE_API_BIND_HOST=0.0.0.0
+MCP_GATEWAY_BIND_HOST=0.0.0.0
+```
+
+Archive 相关：
+
+```env
+ASASHIKI_ARCHIVE_HOST_PATH=/opt/asashiki/Asashiki_Archive
+ASASHIKI_ARCHIVE_ROOT=/archive
+ASASHIKI_DIARY_DIR=
+```
+
+极简状态页登录：
+
+```env
+ADMIN_PANEL_TOKEN=replace-with-a-long-random-password
+```
+
+如果 `docker compose ps` 仍显示 `127.0.0.1:4100->4100/tcp` 或 `127.0.0.1:4200->4200/tcp`，先检查 `.env.production` 和 `--env-file` 是否生效。
+
+## 文档说明
+
+- `AGENTS.md` 是远程开发时 Codex / Claude Code 必须优先读取的文件。
+- `asashiki-ai-foundation-kit/` 里的文档目前作为历史规划和参考资料保留。
+- 当前新增功能以根目录 `README.md`、`AGENTS.md`、`.env.production.example` 和实际代码为准。

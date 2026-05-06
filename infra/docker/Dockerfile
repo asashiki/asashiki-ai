@@ -26,7 +26,7 @@ FROM deps AS runtime
 
 COPY . .
 
-RUN pnpm build
+RUN pnpm build:services
 
 ENV NODE_ENV=production
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Fastify from "fastify";
@@ -12,7 +12,16 @@ import { createMcpGatewayApp } from "./app.js";
 test("mcp gateway lists tools and calls core-api-backed actions", async () => {
   const directory = mkdtempSync(join(tmpdir(), "asashiki-mcp-gateway-"));
   const databasePath = join(directory, "core-api.sqlite");
+  const archiveRoot = join(directory, "Asashiki_Archive");
+  const diaryPath = join(archiveRoot, "Obsidian_Asashiki", "日记");
   const upstream = Fastify({ logger: false });
+
+  mkdirSync(diaryPath, { recursive: true });
+  writeFileSync(
+    join(diaryPath, "2026-05-03.md"),
+    "# 2026-05-03\n\nMCP 测试读取 Archive 中的日记。",
+    "utf8"
+  );
 
   upstream.get("/time_events", async () => [
     {
@@ -35,6 +44,9 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
       PORT: 4101,
       NODE_ENV: "test",
       CORE_API_DB_PATH: databasePath,
+      ASASHIKI_ARCHIVE_ROOT: archiveRoot,
+      ASASHIKI_DIARY_DIR: undefined,
+      ADMIN_PANEL_TOKEN: undefined,
       SUPABASE_TIME_LOG_URL: `${upstreamAddress}/time_events`,
       SUPABASE_TIME_LOG_BEARER_TOKEN: undefined,
       SUPABASE_TIME_LOG_NAME: "Supabase 时间日志"
@@ -74,7 +86,7 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     );
 
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 6);
+    assert.equal(listed.tools.length, 9);
 
     const profile = await client.callTool({
       name: "read_profile_summary",
@@ -93,6 +105,28 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
       arguments: {}
     });
     assert.equal(connectors.isError, undefined);
+
+    const archiveStatus = await client.callTool({
+      name: "get_archive_status",
+      arguments: {}
+    });
+    assert.equal(archiveStatus.isError, undefined);
+
+    const diaryList = await client.callTool({
+      name: "list_diary_entries",
+      arguments: {
+        limit: 3
+      }
+    });
+    assert.equal(diaryList.isError, undefined);
+
+    const diaryEntry = await client.callTool({
+      name: "read_diary_entry",
+      arguments: {
+        date: "2026-05-03"
+      }
+    });
+    assert.equal(diaryEntry.isError, undefined);
 
     const timeLogLookup = await client.callTool({
       name: "lookup_time_log_at",

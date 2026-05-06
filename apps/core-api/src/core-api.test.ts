@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,7 +20,8 @@ test("empty optional integrations do not block core-api startup", async () => {
     REMOTE_MCP_SERVERS_JSON: "",
     SUPABASE_TIME_LOG_URL: "",
     SUPABASE_TIME_LOG_BEARER_TOKEN: "",
-    SUPABASE_TIME_LOG_NAME: ""
+    SUPABASE_TIME_LOG_NAME: "",
+    ADMIN_PANEL_TOKEN: "test-console-token"
   });
   const { server } = await createCoreApiApp({
     env,
@@ -33,6 +34,7 @@ test("empty optional integrations do not block core-api startup", async () => {
     assert.equal(env.SUPABASE_TIME_LOG_URL, undefined);
     assert.equal(env.SUPABASE_TIME_LOG_BEARER_TOKEN, undefined);
     assert.equal(env.SUPABASE_TIME_LOG_NAME, "Supabase 时间日志");
+    assert.equal(env.ADMIN_PANEL_TOKEN, "test-console-token");
 
     const health = await server.inject({
       method: "GET",
@@ -45,6 +47,24 @@ test("empty optional integrations do not block core-api startup", async () => {
       url: "/api/time-log/recent?limit=1"
     });
     assert.equal(timeLogRecent.statusCode, 503);
+
+    const unauthenticatedConsole = await server.inject({
+      method: "GET",
+      url: "/console"
+    });
+    assert.equal(unauthenticatedConsole.statusCode, 401);
+
+    const authenticatedConsole = await server.inject({
+      method: "GET",
+      url: "/console",
+      headers: {
+        authorization: `Basic ${Buffer.from("admin:test-console-token").toString(
+          "base64"
+        )}`
+      }
+    });
+    assert.equal(authenticatedConsole.statusCode, 200);
+    assert.match(authenticatedConsole.body, /Asashiki MCP Console/);
   } finally {
     await server.close();
     rmSync(directory, { recursive: true, force: true });
@@ -54,8 +74,17 @@ test("empty optional integrations do not block core-api startup", async () => {
 test("seeded core api serves profile, journals, remote mcp, connectors and audit", async () => {
   const directory = mkdtempSync(join(tmpdir(), "asashiki-core-api-"));
   const databasePath = join(directory, "core-api.sqlite");
+  const archiveRoot = join(directory, "Asashiki_Archive");
+  const diaryPath = join(archiveRoot, "Obsidian_Asashiki", "日记");
   const upstream = Fastify({ logger: false });
   const remoteMcpApp = Fastify({ logger: false });
+
+  mkdirSync(diaryPath, { recursive: true });
+  writeFileSync(
+    join(diaryPath, "2026-05-03.md"),
+    "# 2026-05-03\n\n今天整理个人 AI 中枢的 Archive 接入。",
+    "utf8"
+  );
 
   upstream.get("/time_events", async () => [
     {
@@ -145,6 +174,9 @@ test("seeded core api serves profile, journals, remote mcp, connectors and audit
       PORT: 4100,
       NODE_ENV: "test",
       CORE_API_DB_PATH: databasePath,
+      ASASHIKI_ARCHIVE_ROOT: archiveRoot,
+      ASASHIKI_DIARY_DIR: undefined,
+      ADMIN_PANEL_TOKEN: undefined,
       REMOTE_MCP_SERVERS_JSON: JSON.stringify([
         {
           id: "supabase",
@@ -202,7 +234,29 @@ test("seeded core api serves profile, journals, remote mcp, connectors and audit
       url: "/api/connectors/summary"
     });
     assert.equal(connectors.statusCode, 200);
-    assert.equal(connectors.json().total >= 3, true);
+    assert.equal(connectors.json().total >= 4, true);
+
+    const archiveStatus = await server.inject({
+      method: "GET",
+      url: "/api/archive/status"
+    });
+    assert.equal(archiveStatus.statusCode, 200);
+    assert.equal(archiveStatus.json().status, "online");
+    assert.equal(archiveStatus.json().fileCount, 1);
+
+    const archiveDiary = await server.inject({
+      method: "GET",
+      url: "/api/archive/diary"
+    });
+    assert.equal(archiveDiary.statusCode, 200);
+    assert.equal(archiveDiary.json().entries[0].date, "2026-05-03");
+
+    const archiveDiaryEntry = await server.inject({
+      method: "GET",
+      url: "/api/archive/diary/2026-05-03"
+    });
+    assert.equal(archiveDiaryEntry.statusCode, 200);
+    assert.match(archiveDiaryEntry.json().content, /Archive 接入/);
 
     const remoteServers = await server.inject({
       method: "GET",

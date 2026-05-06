@@ -1,5 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  archiveDiaryEntrySchema,
+  archiveDiaryListSchema,
+  archiveDiaryReadInputSchema,
+  archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   healthSummarySchema,
@@ -26,6 +30,9 @@ const mcpToolIds = [
   "create_journal_draft",
   "get_health_summary",
   "get_connector_status",
+  "get_archive_status",
+  "list_diary_entries",
+  "read_diary_entry",
   "lookup_time_log_at"
 ] as const;
 
@@ -69,6 +76,27 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
+    id: "get_archive_status",
+    title: "Get Archive Status",
+    description:
+      "Check whether the VPS-mounted Asashiki Archive and diary folder are readable.",
+    readOnlyHint: true
+  },
+  {
+    id: "list_diary_entries",
+    title: "List Diary Entries",
+    description:
+      "List recent Markdown diary entries from the VPS-mounted Asashiki Archive.",
+    readOnlyHint: true
+  },
+  {
+    id: "read_diary_entry",
+    title: "Read Diary Entry",
+    description:
+      "Read one Markdown diary file from the Asashiki Archive by date using YYYY-MM-DD.",
+    readOnlyHint: true
+  },
+  {
     id: "lookup_time_log_at",
     title: "Lookup Time Log At",
     description:
@@ -91,6 +119,15 @@ const healthSummaryTool = mcpToolCatalog.find(
 )!;
 const connectorStatusTool = mcpToolCatalog.find(
   (tool) => tool.id === "get_connector_status"
+)!;
+const archiveStatusTool = mcpToolCatalog.find(
+  (tool) => tool.id === "get_archive_status"
+)!;
+const listDiaryEntriesTool = mcpToolCatalog.find(
+  (tool) => tool.id === "list_diary_entries"
+)!;
+const readDiaryEntryTool = mcpToolCatalog.find(
+  (tool) => tool.id === "read_diary_entry"
 )!;
 const lookupTimeLogTool = mcpToolCatalog.find(
   (tool) => tool.id === "lookup_time_log_at"
@@ -231,6 +268,83 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
+    "get_archive_status",
+    {
+      title: archiveStatusTool.title,
+      description: archiveStatusTool.description,
+      inputSchema: z.object({}),
+      outputSchema: archiveStatusSchema,
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async () => {
+      const output = await client.getArchiveStatus();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(output, null, 2)
+          }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "list_diary_entries",
+    {
+      title: listDiaryEntriesTool.title,
+      description: listDiaryEntriesTool.description,
+      inputSchema: z.object({
+        limit: z.number().int().positive().max(50).optional()
+      }),
+      outputSchema: archiveDiaryListSchema,
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async (input: { limit?: number }) => {
+      const output = await client.listDiaryEntries(input.limit ?? 20);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(output, null, 2)
+          }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "read_diary_entry",
+    {
+      title: readDiaryEntryTool.title,
+      description: readDiaryEntryTool.description,
+      inputSchema: archiveDiaryReadInputSchema,
+      outputSchema: archiveDiaryEntrySchema,
+      annotations: {
+        readOnlyHint: true
+      }
+    },
+    async (input: z.infer<typeof archiveDiaryReadInputSchema>) => {
+      const output = await client.readDiaryEntry(input);
+      return {
+        content: [
+          {
+            type: "text",
+            text: output.content
+          }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
     "lookup_time_log_at",
     {
       title: lookupTimeLogTool.title,
@@ -317,6 +431,51 @@ export async function runMcpToolSmokeTest(
           ok: true,
           summary: `连接器在线 ${output.summary.online}/${output.summary.total}。`,
           preview: output.connectors[0]?.name ?? "No connectors returned.",
+          executedAt
+        });
+      }
+      case "get_archive_status": {
+        const output = await client.getArchiveStatus();
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `Archive 状态：${output.status}。`,
+          preview: output.diaryPath ?? output.lastError,
+          executedAt
+        });
+      }
+      case "list_diary_entries": {
+        const output = await client.listDiaryEntries(5);
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `读取到 ${output.entries.length} 条日记索引。`,
+          preview: output.entries[0]?.title ?? "Archive diary is empty.",
+          executedAt
+        });
+      }
+      case "read_diary_entry": {
+        const list = await client.listDiaryEntries(1);
+        const first = list.entries[0];
+
+        if (!first) {
+          return mcpToolTestResultSchema.parse({
+            toolId,
+            ok: false,
+            summary: "Archive 中没有可读取的日记文件。",
+            preview: null,
+            executedAt
+          });
+        }
+
+        const output = await client.readDiaryEntry({
+          date: first.date
+        });
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `读取到 ${output.date} 的日记。`,
+          preview: output.excerpt,
           executedAt
         });
       }

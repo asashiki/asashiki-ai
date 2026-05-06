@@ -205,6 +205,51 @@ export const timeLogLookupResultSchema = z.object({
 
 export type TimeLogLookupResult = z.infer<typeof timeLogLookupResultSchema>;
 
+export const archiveStatusSchema = z.object({
+  rootPath: z.string().min(1),
+  diaryPath: z.string().min(1).nullable(),
+  status: z.enum(["online", "degraded", "offline"]),
+  fileCount: z.number().int().nonnegative(),
+  latestDiaryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  lastError: z.string().nullable(),
+  checkedAt: z.string().datetime()
+});
+
+export type ArchiveStatus = z.infer<typeof archiveStatusSchema>;
+
+export const archiveDiaryEntryPreviewSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  title: z.string().min(1),
+  path: z.string().min(1),
+  excerpt: z.string().nullable(),
+  updatedAt: z.string().datetime().nullable()
+});
+
+export type ArchiveDiaryEntryPreview = z.infer<
+  typeof archiveDiaryEntryPreviewSchema
+>;
+
+export const archiveDiaryListSchema = z.object({
+  rootPath: z.string().min(1),
+  diaryPath: z.string().min(1).nullable(),
+  fetchedAt: z.string().datetime(),
+  entries: z.array(archiveDiaryEntryPreviewSchema).max(100)
+});
+
+export type ArchiveDiaryList = z.infer<typeof archiveDiaryListSchema>;
+
+export const archiveDiaryReadInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+});
+
+export type ArchiveDiaryReadInput = z.infer<typeof archiveDiaryReadInputSchema>;
+
+export const archiveDiaryEntrySchema = archiveDiaryEntryPreviewSchema.extend({
+  content: z.string().min(1)
+});
+
+export type ArchiveDiaryEntry = z.infer<typeof archiveDiaryEntrySchema>;
+
 export const remoteMcpAuthModeSchema = z.enum(["none", "bearer-env"]);
 
 export type RemoteMcpAuthMode = z.infer<typeof remoteMcpAuthModeSchema>;
