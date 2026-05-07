@@ -742,8 +742,20 @@ export async function createCoreApiApp(options?: {
 
   // Weather endpoint
   server.get("/api/weather", async (_request, reply) => {
-    try { return await fetchWeather(weatherConfig); }
-    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "Weather unavailable." }; }
+    try {
+      // Use latest GPS location if available and fresh (within 2 hours)
+      const locationData = repository.getLocationCurrent();
+      const latest = locationData.devices[0];
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const config =
+        latest && latest.recordedAt > twoHoursAgo
+          ? { ...weatherConfig, latitude: latest.lat, longitude: latest.lon, locationName: "当前位置" }
+          : weatherConfig;
+      return await fetchWeather(config);
+    } catch (e) {
+      reply.code(502);
+      return { message: e instanceof Error ? e.message : "Weather unavailable." };
+    }
   });
 
   // Steam read-only endpoints
