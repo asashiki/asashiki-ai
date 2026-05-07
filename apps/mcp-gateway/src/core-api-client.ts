@@ -2,12 +2,20 @@ import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
+  archiveFileListInputSchema,
+  archiveFileListResultSchema,
+  archiveFileReadInputSchema,
+  archiveFileResultSchema,
+  archiveFileWriteInputSchema,
+  archiveFileWriteResultSchema,
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   deviceActivitySummarySchema,
   deviceCurrentSchema,
+  deviceTimelineInputSchema,
   deviceTimelineSchema,
+  diaryDeleteResultSchema,
   diaryUpdateInputSchema,
   diaryWriteInputSchema,
   diaryWriteResultSchema,
@@ -265,6 +273,78 @@ export function createCoreApiClient(baseUrl: string) {
       }
 
       return diaryWriteResultSchema.parse(await response.json());
+    },
+
+    async deleteDiaryEntry(date: string) {
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/archive/diary/${encodeURIComponent(date)}`),
+        { method: "DELETE" }
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
+      }
+      return diaryDeleteResultSchema.parse(await response.json());
+    },
+
+    async readArchiveFile(input: unknown) {
+      const { path } = archiveFileReadInputSchema.parse(input);
+      const url = resolveUrl(baseUrl, `/api/archive/file?path=${encodeURIComponent(path)}`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.message === "string" ? body.message : "File not found.");
+      }
+      return archiveFileResultSchema.parse(await response.json());
+    },
+
+    async writeArchiveFile(input: unknown) {
+      const payload = archiveFileWriteInputSchema.parse(input);
+      const response = await fetch(resolveUrl(baseUrl, "/api/archive/file"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.message === "string" ? body.message : "Write failed.");
+      }
+      return archiveFileWriteResultSchema.parse(await response.json());
+    },
+
+    async listArchiveFiles(input: unknown) {
+      const { dir } = archiveFileListInputSchema.parse(input);
+      const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
+      const response = await fetch(resolveUrl(baseUrl, `/api/archive/files${qs}`));
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.message === "string" ? body.message : "List failed.");
+      }
+      return archiveFileListResultSchema.parse(await response.json());
+    },
+
+    async getDeviceTimeline(input: unknown) {
+      const params = deviceTimelineInputSchema.parse(input);
+      const qs = new URLSearchParams();
+      if (params.date) qs.set("date", params.date);
+      if (params.deviceId) qs.set("deviceId", params.deviceId);
+      if (params.limit) qs.set("limit", String(params.limit));
+      const response = await fetch(resolveUrl(baseUrl, `/api/devices/timeline-query?${qs}`));
+      if (!response.ok) throw new Error("Failed to fetch device timeline.");
+      return deviceTimelineSchema.parse(await response.json());
+    },
+
+    async getHealthRecords(input: unknown) {
+      const params = healthRecordsQueryInputSchema.parse(input);
+      const qs = new URLSearchParams();
+      if (params.type) qs.set("type", params.type);
+      if (params.from) qs.set("from", params.from);
+      if (params.to) qs.set("to", params.to);
+      if (params.deviceId) qs.set("deviceId", params.deviceId);
+      if (params.limit) qs.set("limit", String(params.limit));
+      const response = await fetch(resolveUrl(baseUrl, `/api/devices/health-records?${qs}`));
+      if (!response.ok) throw new Error("Failed to fetch health records.");
+      return healthRecordsQuerySchema.parse(await response.json());
     }
   };
 }

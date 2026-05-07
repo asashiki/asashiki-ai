@@ -540,6 +540,75 @@ export const diaryWriteResultSchema = archiveDiaryEntryPreviewSchema.extend({
 
 export type DiaryWriteResult = z.infer<typeof diaryWriteResultSchema>;
 
+export const diaryDeleteResultSchema = z.object({
+  date: z.string(),
+  deleted: z.boolean(),
+  path: z.string()
+});
+
+export type DiaryDeleteResult = z.infer<typeof diaryDeleteResultSchema>;
+
+export const archiveFileReadInputSchema = z.object({
+  path: z.string().min(1).max(500)
+});
+
+export type ArchiveFileReadInput = z.infer<typeof archiveFileReadInputSchema>;
+
+export const archiveFileResultSchema = z.object({
+  path: z.string(),
+  content: z.string(),
+  size: z.number(),
+  modifiedAt: z.string()
+});
+
+export type ArchiveFileResult = z.infer<typeof archiveFileResultSchema>;
+
+export const archiveFileWriteInputSchema = z.object({
+  path: z.string().min(1).max(500),
+  content: z.string().max(256 * 1024),
+  overwrite: z.boolean().optional()
+});
+
+export type ArchiveFileWriteInput = z.infer<typeof archiveFileWriteInputSchema>;
+
+export const archiveFileWriteResultSchema = z.object({
+  path: z.string(),
+  size: z.number(),
+  savedAt: z.string(),
+  mode: z.enum(["create", "replace"])
+});
+
+export type ArchiveFileWriteResult = z.infer<typeof archiveFileWriteResultSchema>;
+
+export const archiveFileListInputSchema = z.object({
+  dir: z.string().max(500).optional()
+});
+
+export type ArchiveFileListInput = z.infer<typeof archiveFileListInputSchema>;
+
+export const archiveFileListItemSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  isDir: z.boolean(),
+  size: z.number().optional(),
+  modifiedAt: z.string().optional()
+});
+
+export const archiveFileListResultSchema = z.object({
+  dir: z.string(),
+  items: z.array(archiveFileListItemSchema)
+});
+
+export type ArchiveFileListResult = z.infer<typeof archiveFileListResultSchema>;
+
+export const deviceTimelineInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  deviceId: z.string().optional(),
+  limit: z.number().int().positive().max(200).optional()
+});
+
+export type DeviceTimelineInput = z.infer<typeof deviceTimelineInputSchema>;
+
 export function createServiceHealth(
   app: ServiceManifest,
   environment: "development" | "test" | "production",

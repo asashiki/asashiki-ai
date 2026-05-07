@@ -3,11 +3,20 @@ import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
+  archiveFileListInputSchema,
+  archiveFileListResultSchema,
+  archiveFileReadInputSchema,
+  archiveFileResultSchema,
+  archiveFileWriteInputSchema,
+  archiveFileWriteResultSchema,
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   deviceActivitySummarySchema,
   deviceCurrentSchema,
+  deviceTimelineInputSchema,
+  deviceTimelineSchema,
+  diaryDeleteResultSchema,
   diaryUpdateInputSchema,
   diaryWriteInputSchema,
   diaryWriteResultSchema,
@@ -43,9 +52,15 @@ const mcpToolIds = [
   "lookup_time_log_at",
   "get_device_status",
   "get_device_activity_summary",
+  "get_device_timeline",
   "get_health_metrics",
+  "get_health_records",
   "write_diary_entry",
-  "update_diary_entry"
+  "update_diary_entry",
+  "delete_diary_entry",
+  "read_archive_file",
+  "write_archive_file",
+  "list_archive_files"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -137,6 +152,20 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
+    id: "get_device_timeline",
+    title: "Get Device Activity Timeline",
+    description:
+      "Return the chronological app-switch timeline for a given date (default: today). Shows each foreground app period with start/end times.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_health_records",
+    title: "Get Health Records",
+    description:
+      "Query raw health records from HealthConnect by type and/or date range. Returns individual timestamped measurements (e.g. every heart rate sample).",
+    readOnlyHint: true
+  },
+  {
     id: "write_diary_entry",
     title: "Write Diary Entry",
     description:
@@ -149,6 +178,33 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     description:
       "Update an existing diary entry in the Archive. Supports replace (overwrite full content) or append (add to end).",
     readOnlyHint: false
+  },
+  {
+    id: "delete_diary_entry",
+    title: "Delete Diary Entry",
+    description: "Permanently delete a diary entry file from the Archive by date (YYYY-MM-DD).",
+    readOnlyHint: false
+  },
+  {
+    id: "read_archive_file",
+    title: "Read Archive File",
+    description:
+      "Read any Markdown or text file in the Archive by relative path (e.g. '关于我/profile.md', '主题/某主题.md'). Use list_archive_files to discover available paths.",
+    readOnlyHint: true
+  },
+  {
+    id: "write_archive_file",
+    title: "Write Archive File",
+    description:
+      "Create or overwrite any file in the Archive by relative path. Use this to update profile.md, role cards, topic notes, etc.",
+    readOnlyHint: false
+  },
+  {
+    id: "list_archive_files",
+    title: "List Archive Files",
+    description:
+      "List files and subdirectories within an Archive directory. Call with no arguments to see the top-level structure, or pass dir to drill down.",
+    readOnlyHint: true
   }
 ]);
 
@@ -193,6 +249,24 @@ const writeDiaryEntryTool = mcpToolCatalog.find(
 )!;
 const updateDiaryEntryTool = mcpToolCatalog.find(
   (tool) => tool.id === "update_diary_entry"
+)!;
+const deleteDiaryEntryTool = mcpToolCatalog.find(
+  (tool) => tool.id === "delete_diary_entry"
+)!;
+const getDeviceTimelineTool = mcpToolCatalog.find(
+  (tool) => tool.id === "get_device_timeline"
+)!;
+const getHealthRecordsTool = mcpToolCatalog.find(
+  (tool) => tool.id === "get_health_records"
+)!;
+const readArchiveFileTool = mcpToolCatalog.find(
+  (tool) => tool.id === "read_archive_file"
+)!;
+const writeArchiveFileTool = mcpToolCatalog.find(
+  (tool) => tool.id === "write_archive_file"
+)!;
+const listArchiveFilesTool = mcpToolCatalog.find(
+  (tool) => tool.id === "list_archive_files"
 )!;
 
 export function createMcpGatewayServer(client: CoreApiClient) {
@@ -531,6 +605,110 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
+  server.registerTool(
+    "delete_diary_entry",
+    {
+      title: deleteDiaryEntryTool.title,
+      description: deleteDiaryEntryTool.description,
+      inputSchema: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+      outputSchema: diaryDeleteResultSchema
+    },
+    async (input: { date: string }) => {
+      const output = await client.deleteDiaryEntry(input.date);
+      return {
+        content: [{ type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_device_timeline",
+    {
+      title: getDeviceTimelineTool.title,
+      description: getDeviceTimelineTool.description,
+      inputSchema: deviceTimelineInputSchema,
+      outputSchema: deviceTimelineSchema
+    },
+    async (input: z.infer<typeof deviceTimelineInputSchema>) => {
+      const output = await client.getDeviceTimeline(input);
+      const count = output.activities?.length ?? 0;
+      return {
+        content: [{ type: "text", text: `Device timeline for ${output.date}: ${count} activity records.` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_health_records",
+    {
+      title: getHealthRecordsTool.title,
+      description: getHealthRecordsTool.description,
+      inputSchema: healthRecordsQueryInputSchema,
+      outputSchema: healthRecordsQuerySchema
+    },
+    async (input: z.infer<typeof healthRecordsQueryInputSchema>) => {
+      const output = await client.getHealthRecords(input);
+      return {
+        content: [{ type: "text", text: `${output.records.length} health records returned.` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "read_archive_file",
+    {
+      title: readArchiveFileTool.title,
+      description: readArchiveFileTool.description,
+      inputSchema: archiveFileReadInputSchema,
+      outputSchema: archiveFileResultSchema
+    },
+    async (input: z.infer<typeof archiveFileReadInputSchema>) => {
+      const output = await client.readArchiveFile(input);
+      return {
+        content: [{ type: "text", text: output.content }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "write_archive_file",
+    {
+      title: writeArchiveFileTool.title,
+      description: writeArchiveFileTool.description,
+      inputSchema: archiveFileWriteInputSchema,
+      outputSchema: archiveFileWriteResultSchema
+    },
+    async (input: z.infer<typeof archiveFileWriteInputSchema>) => {
+      const output = await client.writeArchiveFile(input);
+      return {
+        content: [{ type: "text", text: `${output.mode === "create" ? "Created" : "Updated"} ${output.path} (${output.size} bytes).` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "list_archive_files",
+    {
+      title: listArchiveFilesTool.title,
+      description: listArchiveFilesTool.description,
+      inputSchema: archiveFileListInputSchema,
+      outputSchema: archiveFileListResultSchema
+    },
+    async (input: z.infer<typeof archiveFileListInputSchema>) => {
+      const output = await client.listArchiveFiles(input);
+      const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
+      return {
+        content: [{ type: "text", text: summary || "Empty directory." }],
+        structuredContent: output
+      };
+    }
+  );
+
   return server;
 }
 
@@ -691,6 +869,50 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
+      case "get_device_timeline": {
+        const output = await client.getDeviceTimeline({});
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `设备时间线：${output.activities?.length ?? 0} 条活动记录。`,
+          preview: output.activities?.[0]?.appId ?? "暂无记录。",
+          executedAt
+        });
+      }
+      case "get_health_records": {
+        const output = await client.getHealthRecords({ limit: 3 });
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `健康记录：${output.records.length} 条。`,
+          preview: output.records[0] ? `${output.records[0].type}: ${output.records[0].value}` : "暂无。",
+          executedAt
+        });
+      }
+      case "list_archive_files": {
+        const output = await client.listArchiveFiles({});
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `Archive 顶层：${output.items.length} 个条目。`,
+          preview: output.items.map((i) => i.name).join(", "),
+          executedAt
+        });
+      }
+      case "read_archive_file": {
+        const output = await client.readArchiveFile({ path: "Obsidian_Asashiki/00-索引.md" });
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `读取 ${output.path}，${output.size} 字节。`,
+          preview: output.content.slice(0, 80),
+          executedAt
+        });
+      }
+      case "write_archive_file":
+      case "delete_diary_entry":
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `${toolId} smoke test 跳过（避免改动真实文件）。`,
+          preview: null,
+          executedAt
+        });
       case "write_diary_entry":
         return mcpToolTestResultSchema.parse({
           toolId,

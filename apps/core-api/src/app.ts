@@ -3,14 +3,20 @@ import cors from "@fastify/cors";
 import { getOptionalEnvValue, parseServiceEnv } from "@asashiki/config";
 import {
   archiveDiaryReadInputSchema,
+  archiveFileListInputSchema,
+  archiveFileReadInputSchema,
+  archiveFileWriteInputSchema,
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   createServiceHealth,
   deviceReportInputSchema,
+  deviceTimelineInputSchema,
+  diaryDeleteResultSchema,
   diaryUpdateInputSchema,
   diaryWriteInputSchema,
   healthRecordsBatchInputSchema,
+  healthRecordsQueryInputSchema,
   recentContextSchema,
   remoteMcpServerSchema,
   remoteMcpToolInvokeInputSchema,
@@ -600,6 +606,63 @@ export async function createCoreApiApp(options?: {
           error instanceof Error ? error.message : "Diary update failed."
       };
     }
+  });
+
+  // DELETE diary entry
+  server.delete("/api/archive/diary/:date", async (request, reply) => {
+    const params = z
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+      .parse(request.params);
+    try {
+      return archive.deleteDiaryEntry(params.date);
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : "Delete failed." };
+    }
+  });
+
+  // Generic archive file access
+  server.get("/api/archive/file", async (request, reply) => {
+    const { path } = archiveFileReadInputSchema.parse(request.query);
+    try {
+      return archive.readArchiveFile(path);
+    } catch (error) {
+      reply.code(404);
+      return { message: error instanceof Error ? error.message : "File not found." };
+    }
+  });
+
+  server.post("/api/archive/file", async (request, reply) => {
+    const payload = archiveFileWriteInputSchema.parse(request.body ?? {});
+    try {
+      return archive.writeArchiveFile(payload.path, payload.content, payload.overwrite ?? false);
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : "Write failed." };
+    }
+  });
+
+  server.get("/api/archive/files", async (request, reply) => {
+    const { dir } = archiveFileListInputSchema.parse(request.query);
+    try {
+      return archive.listArchiveFiles(dir);
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : "List failed." };
+    }
+  });
+
+  // Device timeline (expose existing repository method)
+  server.get("/api/devices/timeline-query", async (request) => {
+    const input = deviceTimelineInputSchema.parse(request.query);
+    const date = input.date ?? new Date().toISOString().slice(0, 10);
+    return repository.getDeviceTimeline(date);
+  });
+
+  // Health records detailed query (expose existing repository method)
+  server.get("/api/devices/health-records", async (request) => {
+    const input = healthRecordsQueryInputSchema.parse(request.query);
+    return repository.getHealthRecords(input);
   });
 
   server.get("/api/audit/recent", async () => repository.listRecentAudit());

@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   writeFileSync
 } from "node:fs";
@@ -10,8 +11,12 @@ import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
+  archiveFileListResultSchema,
+  archiveFileResultSchema,
+  archiveFileWriteResultSchema,
   archiveStatusSchema,
   connectorSchema,
+  diaryDeleteResultSchema,
   diaryWriteResultSchema
 } from "@asashiki/schemas";
 
@@ -367,12 +372,112 @@ export function createArchiveClient(options: {
     });
   }
 
+  function deleteDiaryEntry(date: string) {
+    const diaryPath = getResolvedDiaryPath();
+
+    if (!diaryPath) throw new Error("Archive diary folder is not available.");
+    if (!diaryFilePattern.test(`${date}.md`)) throw new Error("Diary date must use YYYY-MM-DD.");
+
+    const targetPath = resolveInside(diaryPath, join(diaryPath, `${date}.md`));
+
+    if (!existsSync(targetPath)) {
+      return diaryDeleteResultSchema.parse({ date, deleted: false, path: join(basename(diaryPath), `${date}.md`) });
+    }
+
+    rmSync(targetPath);
+    return diaryDeleteResultSchema.parse({ date, deleted: true, path: join(basename(diaryPath), `${date}.md`) });
+  }
+
+  function readArchiveFile(path: string) {
+    const root = resolveRoot();
+    if (!root) throw new Error("Archive is not available.");
+
+    const target = resolveInside(root, join(root, path));
+    if (!existsSync(target)) throw new Error(`File not found: ${path}`);
+
+    const stats = statSync(target);
+    if (stats.isDirectory()) throw new Error(`Path is a directory: ${path}`);
+    if (stats.size > 512 * 1024) throw new Error("File too large (>512KB).");
+
+    const content = readFileSync(target, { encoding: "utf8" });
+    return archiveFileResultSchema.parse({
+      path: relative(root, target),
+      content,
+      size: stats.size,
+      modifiedAt: stats.mtime.toISOString()
+    });
+  }
+
+  function writeArchiveFile(path: string, content: string, overwrite = false) {
+    const root = resolveRoot();
+    if (!root) throw new Error("Archive is not available.");
+
+    const target = resolveInside(root, join(root, path));
+    const exists = existsSync(target);
+
+    if (exists && !overwrite) throw new Error("File already exists. Pass overwrite=true to replace.");
+
+    const dir = resolve(target, "..");
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+    writeFileSync(target, content, { encoding: "utf8" });
+
+    const stats = statSync(target);
+    return archiveFileWriteResultSchema.parse({
+      path: relative(root, target),
+      size: stats.size,
+      savedAt: stats.mtime.toISOString(),
+      mode: exists ? "replace" : "create"
+    });
+  }
+
+  function listArchiveFiles(dir?: string) {
+    const root = resolveRoot();
+    if (!root) throw new Error("Archive is not available.");
+
+    const target = dir ? resolveInside(root, join(root, dir)) : root;
+    if (!existsSync(target)) throw new Error(`Directory not found: ${dir ?? "/"}`);
+
+    const stats = statSync(target);
+    if (!stats.isDirectory()) throw new Error(`Path is not a directory: ${dir}`);
+
+    const entries = readdirSync(target, { withFileTypes: true });
+    const items = entries
+      .filter((e) => !e.name.startsWith("."))
+      .map((e) => {
+        const fullPath = join(target, e.name);
+        const relPath = relative(root, fullPath);
+        if (e.isDirectory()) {
+          return { name: e.name, path: relPath, isDir: true };
+        }
+        try {
+          const s = statSync(fullPath);
+          return { name: e.name, path: relPath, isDir: false, size: s.size, modifiedAt: s.mtime.toISOString() };
+        } catch {
+          return { name: e.name, path: relPath, isDir: false };
+        }
+      });
+
+    return archiveFileListResultSchema.parse({
+      dir: dir ? relative(root, target) : "",
+      items
+    });
+  }
+
+  function resolveRoot() {
+    return existsSync(rootPath) ? rootPath : null;
+  }
+
   return {
     getStatus,
     listDiaryEntries,
     readDiaryEntry,
     writeDiaryEntry,
     updateDiaryEntry,
+    deleteDiaryEntry,
+    readArchiveFile,
+    writeArchiveFile,
+    listArchiveFiles,
     getConnector
   };
 }
