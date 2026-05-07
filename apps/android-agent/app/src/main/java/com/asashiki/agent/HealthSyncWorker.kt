@@ -76,10 +76,10 @@ class HealthSyncWorker(
         }
         snapshot.sleep?.forEach { s ->
             val dur = durationMinutes(s.startTime, s.endTime)
-            list.add(record("sleep_duration", dur, null, "minutes", s.startTime))
+            list.add(record("sleep", dur, null, "minutes", s.startTime))
         }
         snapshot.calories?.forEach { s ->
-            list.add(record("calories_burned", s.kcal, null, "kcal", s.startTime))
+            list.add(record("total_calories", s.kcal, null, "kcal", s.startTime))
         }
         snapshot.spo2?.forEach { s ->
             list.add(record("oxygen_saturation", s.percentage, null, "percent", s.time))
@@ -89,7 +89,7 @@ class HealthSyncWorker(
         }
         snapshot.exercise?.forEach { s ->
             val dur = durationMinutes(s.startTime, s.endTime)
-            list.add(record("exercise_duration", dur, null, "minutes", s.startTime))
+            list.add(record("exercise", dur, null, "minutes", s.startTime))
         }
         snapshot.bloodPressure?.forEach { s ->
             val vj = JSONObject()

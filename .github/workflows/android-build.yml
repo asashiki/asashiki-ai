@@ -28,9 +28,26 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Generate app icon
+        run: |
+          sudo apt-get install -y imagemagick
+          for size in 48 72 96 144 192; do
+            case $size in
+              48)  dpi=mdpi ;;
+              72)  dpi=hdpi ;;
+              96)  dpi=xhdpi ;;
+              144) dpi=xxhdpi ;;
+              192) dpi=xxxhdpi ;;
+            esac
+            mkdir -p apps/android-agent/app/src/main/res/mipmap-${dpi}
+            convert apps/android-agent/app/src/main/ic_launcher_source.jpg \
+              -resize ${size}x${size} \
+              apps/android-agent/app/src/main/res/mipmap-${dpi}/ic_launcher.png
+          done
+
       - name: Build debug APK
         working-directory: apps/android-agent
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon -PversionCode=${{ github.run_number }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
