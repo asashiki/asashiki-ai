@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  locationCurrentSchema,
+  locationHistorySchema,
+  locationHistoryQueryInputSchema,
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
@@ -78,7 +81,9 @@ const mcpToolIds = [
   "get_okx_assets",
   "get_steam_recent_games",
   "get_steam_profile",
-  "get_weather"
+  "get_weather",
+  "get_current_location",
+  "get_location_history"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -252,6 +257,20 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
+    id: "get_current_location",
+    title: "Get Current Location",
+    description:
+      "Return the latest GPS location for each registered device. Includes coordinates, accuracy, speed, and timestamp. Requires location tracking enabled on the Android app.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_location_history",
+    title: "Get Location History",
+    description:
+      "Return a chronological trail of location points. Optionally filter by deviceId, from/to timestamps (ISO8601), and limit. Useful for reconstructing commute routes or understanding movement patterns.",
+    readOnlyHint: true
+  },
+  {
     id: "get_weather",
     title: "Get Current Weather",
     description:
@@ -350,6 +369,8 @@ const searchArchiveTool = mcpToolCatalog.find(
 const getOkxBalanceTool = mcpToolCatalog.find((t) => t.id === "get_okx_balance")!;
 const getOkxPositionsTool = mcpToolCatalog.find((t) => t.id === "get_okx_positions")!;
 const getOkxAssetsTool = mcpToolCatalog.find((t) => t.id === "get_okx_assets")!;
+const getCurrentLocationTool = mcpToolCatalog.find((t) => t.id === "get_current_location")!;
+const getLocationHistoryTool = mcpToolCatalog.find((t) => t.id === "get_location_history")!;
 const getWeatherTool = mcpToolCatalog.find((t) => t.id === "get_weather")!;
 const getSteamRecentGamesTool = mcpToolCatalog.find((t) => t.id === "get_steam_recent_games")!;
 const getSteamProfileTool = mcpToolCatalog.find((t) => t.id === "get_steam_profile")!;
@@ -882,6 +903,51 @@ export function createMcpGatewayServer(client: CoreApiClient) {
       const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
       return {
         content: [{ type: "text", text: summary || "Empty directory." }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_current_location",
+    {
+      title: getCurrentLocationTool.title,
+      description: getCurrentLocationTool.description,
+      inputSchema: z.object({}),
+      outputSchema: locationCurrentSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const output = await client.getLocationCurrent();
+      const summary = output.devices.length === 0
+        ? "暂无位置数据。请确保 Android App 已开启位置追踪。"
+        : output.devices.map((d) => {
+            const speed = d.speedMps != null ? ` 速度${(d.speedMps * 3.6).toFixed(1)}km/h` : "";
+            return `${d.deviceId}: ${d.lat.toFixed(5)},${d.lon.toFixed(5)}${speed} @ ${d.recordedAt}`;
+          }).join("\n");
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_location_history",
+    {
+      title: getLocationHistoryTool.title,
+      description: getLocationHistoryTool.description,
+      inputSchema: locationHistoryQueryInputSchema,
+      outputSchema: locationHistorySchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof locationHistoryQueryInputSchema>) => {
+      const output = await client.getLocationHistory(input);
+      const summary = output.total === 0
+        ? "该时段内无位置记录。"
+        : `共 ${output.total} 个位置点，最新: ${output.points[0]?.recordedAt ?? "—"}`;
+      return {
+        content: [{ type: "text", text: summary }],
         structuredContent: output
       };
     }

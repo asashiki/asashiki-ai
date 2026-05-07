@@ -19,6 +19,8 @@ import {
   diaryWriteInputSchema,
   healthRecordsBatchInputSchema,
   healthRecordsQueryInputSchema,
+  locationBatchInputSchema,
+  locationHistoryQueryInputSchema,
   recentContextSchema,
   remoteMcpServerSchema,
   remoteMcpToolInvokeInputSchema,
@@ -714,6 +716,28 @@ export async function createCoreApiApp(options?: {
     if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
     try { return await okx.getAssetBalances(); }
     catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
+  });
+
+  // Location tracking endpoints
+  server.post("/api/devices/location", async (request, reply) => {
+    const identity = deviceAuth.resolve(request.headers.authorization);
+    if (!identity) { reply.code(401); return { message: "Unauthorized." }; }
+    try {
+      const result = repository.insertLocationBatch(identity.deviceId, request.body ?? {});
+      return result;
+    } catch (e) {
+      reply.code(400);
+      return { message: e instanceof Error ? e.message : "Bad request." };
+    }
+  });
+
+  server.get("/api/devices/location/current", async () =>
+    repository.getLocationCurrent()
+  );
+
+  server.get("/api/devices/location/history", async (request) => {
+    const input = locationHistoryQueryInputSchema.parse(request.query);
+    return repository.getLocationHistory(input);
   });
 
   // Weather endpoint

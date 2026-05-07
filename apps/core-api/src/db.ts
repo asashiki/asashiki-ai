@@ -127,6 +127,26 @@ export function migrateDatabase(database: DatabaseSync) {
 
     CREATE INDEX IF NOT EXISTS idx_health_records_recorded
       ON health_records(recorded_at DESC, type);
+
+    CREATE TABLE IF NOT EXISTS device_location_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lon REAL NOT NULL,
+      accuracy_m REAL,
+      altitude_m REAL,
+      speed_mps REAL,
+      bearing_deg REAL,
+      activity TEXT,
+      recorded_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_location_points_device_recorded
+      ON device_location_points(device_id, recorded_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_location_points_recorded
+      ON device_location_points(recorded_at DESC);
   `);
 }
 

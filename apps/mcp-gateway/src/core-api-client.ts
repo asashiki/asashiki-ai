@@ -1,5 +1,8 @@
 import {
   weatherSchema,
+  locationCurrentSchema,
+  locationHistorySchema,
+  locationHistoryQueryInputSchema,
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
@@ -40,6 +43,7 @@ import {
   timeLogLookupResultSchema,
   timeLogRecentSchema
 } from "@asashiki/schemas";
+import { z } from "zod";
 
 function resolveUrl(baseUrl: string, path: string) {
   return new URL(path, baseUrl).toString();
@@ -362,6 +366,24 @@ export function createCoreApiClient(baseUrl: string) {
         throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
       }
       return archiveFileDeleteResultSchema.parse(await response.json());
+    },
+
+    async getLocationCurrent() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/devices/location/current"));
+      if (!res.ok) throw new Error("Location unavailable.");
+      return locationCurrentSchema.parse(await res.json());
+    },
+
+    async getLocationHistory(input: z.infer<typeof locationHistoryQueryInputSchema>) {
+      const params = new URLSearchParams();
+      if (input.deviceId) params.set("deviceId", input.deviceId);
+      if (input.from) params.set("from", input.from);
+      if (input.to) params.set("to", input.to);
+      if (input.limit) params.set("limit", String(input.limit));
+      const qs = params.toString();
+      const res = await fetch(resolveUrl(baseUrl, `/api/devices/location/history${qs ? `?${qs}` : ""}`));
+      if (!res.ok) throw new Error("Location history unavailable.");
+      return locationHistorySchema.parse(await res.json());
     },
 
     async getWeather() {

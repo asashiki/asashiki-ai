@@ -82,6 +82,9 @@ dependencies {
     // WorkManager (for HealthConnect periodic sync)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
+    // Location (FusedLocationProviderClient + ActivityRecognition)
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
     // HealthConnect
     implementation("androidx.health.connect:connect-client:1.1.0-rc01")
 

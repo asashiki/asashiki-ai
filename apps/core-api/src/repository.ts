@@ -21,6 +21,11 @@ import {
   journalDraftSavedSchema,
   journalDraftSchema,
   journalEntrySchema,
+  locationBatchInputSchema,
+  locationCurrentSchema,
+  locationHistoryQueryInputSchema,
+  locationHistorySchema,
+  locationPointSchema,
   profileSummarySchema,
   profileSummaryInputSchema,
   profileSummarySavedSchema,
@@ -778,6 +783,101 @@ export function createRepository(database: DatabaseSync) {
       return healthRecordsQuerySchema.parse({
         fetchedAt: new Date().toISOString(),
         records
+      });
+    },
+
+    insertLocationBatch(deviceId: string, input: unknown) {
+      const { points } = locationBatchInputSchema.parse(input);
+      const now = new Date().toISOString();
+      const stmt = database.prepare(`
+        INSERT OR IGNORE INTO device_location_points
+          (device_id, lat, lon, accuracy_m, altitude_m, speed_mps, bearing_deg, activity, recorded_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      let inserted = 0;
+      for (const p of points) {
+        const result = stmt.run(
+          deviceId,
+          p.lat,
+          p.lon,
+          p.accuracyM ?? null,
+          p.altitudeM ?? null,
+          p.speedMps ?? null,
+          p.bearingDeg ?? null,
+          p.activity ?? null,
+          p.recordedAt,
+          now
+        ) as { changes: number };
+        inserted += result.changes;
+      }
+      return { inserted, total: points.length };
+    },
+
+    getLocationCurrent() {
+      const rows = database.prepare(`
+        SELECT p.device_id, p.lat, p.lon, p.accuracy_m, p.speed_mps, p.activity, p.recorded_at
+        FROM device_location_points p
+        INNER JOIN (
+          SELECT device_id, MAX(recorded_at) AS max_recorded
+          FROM device_location_points
+          GROUP BY device_id
+        ) latest ON p.device_id = latest.device_id AND p.recorded_at = latest.max_recorded
+        ORDER BY p.recorded_at DESC
+      `).all() as JsonRow[];
+
+      return locationCurrentSchema.parse({
+        fetchedAt: new Date().toISOString(),
+        devices: rows.map((r) => ({
+          deviceId: r.device_id,
+          lat: r.lat,
+          lon: r.lon,
+          accuracyM: r.accuracy_m ?? null,
+          speedMps: r.speed_mps ?? null,
+          activity: r.activity ?? null,
+          recordedAt: r.recorded_at
+        }))
+      });
+    },
+
+    getLocationHistory(input: unknown) {
+      const query = locationHistoryQueryInputSchema.parse(input ?? {});
+      const filters: string[] = [];
+      const params: unknown[] = [];
+
+      if (query.deviceId) { filters.push("device_id = ?"); params.push(query.deviceId); }
+      if (query.from) { filters.push("recorded_at >= ?"); params.push(query.from); }
+      if (query.to) { filters.push("recorded_at <= ?"); params.push(query.to); }
+
+      const limit = Math.min(query.limit ?? 200, 500);
+      const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+      const rows = database.prepare(`
+        SELECT id, device_id, lat, lon, accuracy_m, altitude_m, speed_mps, bearing_deg, activity, recorded_at, created_at
+        FROM device_location_points
+        ${where}
+        ORDER BY recorded_at DESC
+        LIMIT ${limit}
+      `).all(...params) as JsonRow[];
+
+      const points = rows.map((r) =>
+        locationPointSchema.parse({
+          id: r.id,
+          deviceId: r.device_id,
+          lat: r.lat,
+          lon: r.lon,
+          accuracyM: r.accuracy_m ?? null,
+          altitudeM: r.altitude_m ?? null,
+          speedMps: r.speed_mps ?? null,
+          bearingDeg: r.bearing_deg ?? null,
+          activity: r.activity ?? null,
+          recordedAt: r.recorded_at,
+          createdAt: r.created_at
+        })
+      );
+
+      return locationHistorySchema.parse({
+        fetchedAt: new Date().toISOString(),
+        total: points.length,
+        points
       });
     }
   };

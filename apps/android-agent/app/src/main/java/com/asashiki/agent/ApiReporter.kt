@@ -70,6 +70,18 @@ object ApiReporter {
         return execute(request)
     }
 
+    fun postLocationBatch(baseUrl: String, token: String, points: org.json.JSONArray): Boolean {
+        if (token.isBlank() || points.length() == 0) return false
+        val body = JSONObject().put("points", points)
+        val request = Request.Builder()
+            .url("$baseUrl/api/devices/location")
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("User-Agent", "asashiki-android-agent/1.0.0")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+        return execute(request)
+    }
+
     fun postHealthBatch(baseUrl: String, token: String, records: List<JSONObject>): Boolean {
         val normalized = normalizeBaseUrl(baseUrl) ?: return false
         if (token.isBlank() || records.isEmpty()) return false

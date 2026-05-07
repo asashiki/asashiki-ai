@@ -700,6 +700,75 @@ export const deviceTimelineInputSchema = z.object({
 
 export type DeviceTimelineInput = z.infer<typeof deviceTimelineInputSchema>;
 
+// ─── Location ────────────────────────────────────────────────────────────────
+
+export const locationPointInputSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  accuracyM: z.number().nonnegative().optional(),
+  altitudeM: z.number().optional(),
+  speedMps: z.number().nonnegative().optional(),
+  bearingDeg: z.number().optional(),
+  activity: z.enum(["still", "on_foot", "running", "in_vehicle", "unknown"]).optional(),
+  recordedAt: z.string()
+});
+
+export const locationBatchInputSchema = z.object({
+  points: z.array(locationPointInputSchema).min(1).max(200)
+});
+
+export type LocationBatchInput = z.infer<typeof locationBatchInputSchema>;
+
+export const locationPointSchema = z.object({
+  id: z.number().int(),
+  deviceId: z.string(),
+  lat: z.number(),
+  lon: z.number(),
+  accuracyM: z.number().nullable(),
+  altitudeM: z.number().nullable(),
+  speedMps: z.number().nullable(),
+  bearingDeg: z.number().nullable(),
+  activity: z.string().nullable(),
+  recordedAt: z.string(),
+  createdAt: z.string()
+});
+
+export type LocationPoint = z.infer<typeof locationPointSchema>;
+
+export const locationDeviceLastSchema = z.object({
+  deviceId: z.string(),
+  lat: z.number(),
+  lon: z.number(),
+  accuracyM: z.number().nullable(),
+  speedMps: z.number().nullable(),
+  activity: z.string().nullable(),
+  recordedAt: z.string()
+});
+
+export const locationCurrentSchema = z.object({
+  fetchedAt: z.string(),
+  devices: z.array(locationDeviceLastSchema)
+});
+
+export type LocationCurrent = z.infer<typeof locationCurrentSchema>;
+
+export const locationHistoryQueryInputSchema = z.object({
+  deviceId: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  limit: z.number().int().positive().max(500).optional()
+});
+
+export type LocationHistoryQueryInput = z.infer<typeof locationHistoryQueryInputSchema>;
+
+export const locationHistorySchema = z.object({
+  fetchedAt: z.string(),
+  total: z.number().int(),
+  points: z.array(locationPointSchema)
+});
+
+export type LocationHistory = z.infer<typeof locationHistorySchema>;
+
 // ─── Weather ──────────────────────────────────────────────────────────────────
 
 export const weatherCurrentSchema = z.object({

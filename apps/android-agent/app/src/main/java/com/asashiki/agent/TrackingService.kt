@@ -23,6 +23,7 @@ import kotlin.math.max
 class TrackingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var settingsStore: SettingsStore
+    private lateinit var locationTracker: LocationTracker
 
     private var trackingJob: Job? = null
     private var lastSentKey = ""
@@ -32,6 +33,7 @@ class TrackingService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsStore = SettingsStore(this)
+        locationTracker = LocationTracker(this, serviceScope)
         createNotificationChannel()
         settingsStore.appendLog("服务已创建")
     }
@@ -89,6 +91,13 @@ class TrackingService : Service() {
             while (isActive) {
                 val settings = settingsStore.load()
                 scheduleWatchdog(calculateWatchdogDelay(settings))
+
+                // Sync location tracker state with settings
+                if (settings.locationTrackingEnabled && settings.isRunningEnabled) {
+                    locationTracker.start(settings.serverUrl, settings.token)
+                } else {
+                    locationTracker.stop()
+                }
 
                 if (!settings.isRunningEnabled) {
                     setServiceState("等待启动", "等待用户启动监听")
@@ -157,6 +166,7 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking(cancelWatchdog: Boolean = true) {
+        locationTracker.stop()
         trackingJob?.cancel()
         trackingJob = null
         lastSentKey = ""

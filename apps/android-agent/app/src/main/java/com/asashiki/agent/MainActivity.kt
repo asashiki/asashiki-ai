@@ -1,7 +1,10 @@
 package com.asashiki.agent
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import android.net.Uri
 import android.os.Bundle
@@ -95,6 +98,14 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { /* result ignored; permission state re-read in UI */ }
 
+    private val locationPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* result re-read in UI refresh loop */ }
+
+    private val bgLocationPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* result re-read in UI refresh loop */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -110,6 +121,15 @@ class MainActivity : ComponentActivity() {
                         },
                         onRefreshHcState = {
                             checkHcPermissions()
+                        },
+                        onRequestForegroundLocation = {
+                            locationPermLauncher.launch(arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            ))
+                        },
+                        onRequestBackgroundLocation = {
+                            bgLocationPermLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                         }
                     )
                 }
@@ -138,6 +158,8 @@ fun AgentScreen(
     onRequestHcPermissions: () -> Unit,
     onOpenUsageSettings: () -> Unit,
     onRefreshHcState: () -> Unit,
+    onRequestForegroundLocation: () -> Unit = {},
+    onRequestBackgroundLocation: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -146,12 +168,20 @@ fun AgentScreen(
     var settings by remember { mutableStateOf(store.load()) }
     var logs by remember { mutableStateOf(listOf<String>()) }
     var hasUsagePerm by remember { mutableStateOf(false) }
+    var hasForegroundLocation by remember { mutableStateOf(false) }
+    var hasBackgroundLocation by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
             settings = store.load()
             logs = store.loadLogs(60)
             hasUsagePerm = UsageTracker.hasUsageStatsPermission(context)
+            hasForegroundLocation = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            hasBackgroundLocation = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
             onRefreshHcState()
             delay(3_000)
         }
@@ -352,6 +382,58 @@ fun AgentScreen(
                     Text("立即同步健康数据")
                 }
             }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        // ── Location tracking ────────────────────────────────────────────
+        SectionHeader("位置追踪")
+
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("启用位置追踪")
+            Switch(
+                checked = settings.locationTrackingEnabled,
+                onCheckedChange = {
+                    settings = settings.copy(locationTrackingEnabled = it)
+                    store.save(settings)
+                },
+                enabled = hasForegroundLocation
+            )
+        }
+
+        if (!hasForegroundLocation) {
+            Button(
+                onClick = onRequestForegroundLocation,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57C00)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("授予「位置权限」（前台）")
+            }
+        } else if (!hasBackgroundLocation) {
+            Button(
+                onClick = onRequestBackgroundLocation,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("授予「后台位置权限」（允许始终访问）")
+            }
+            Text(
+                "建议授予「始终允许」以便在屏幕关闭时记录通勤路径",
+                fontSize = 11.sp, color = Color.Gray
+            )
+        } else {
+            Text("✓ 位置权限已授予（前台 + 后台）", color = Color(0xFF388E3C), fontSize = 13.sp)
+        }
+
+        if (settings.locationTrackingEnabled) {
+            Text(
+                "每 10 分钟或移动 100m 记录一次位置，每 5 分钟上传",
+                fontSize = 11.sp, color = Color.Gray
+            )
         }
 
         Spacer(Modifier.height(4.dp))

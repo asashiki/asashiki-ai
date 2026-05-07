@@ -26,6 +26,7 @@ class SettingsStore(context: Context) {
             hcSyncEnabled = prefs.getBoolean(KEY_HC_SYNC_ENABLED, true),
             hcSyncIntervalMinutes = prefs.getLong(KEY_HC_SYNC_INTERVAL, 60L),
             hcSyncRangeHours = prefs.getLong(KEY_HC_SYNC_RANGE, 24L),
+            locationTrackingEnabled = prefs.getBoolean(KEY_LOCATION_ENABLED, false),
         )
     }
 
@@ -43,6 +44,7 @@ class SettingsStore(context: Context) {
             .putBoolean(KEY_HC_SYNC_ENABLED, settings.hcSyncEnabled)
             .putLong(KEY_HC_SYNC_INTERVAL, settings.hcSyncIntervalMinutes.coerceAtLeast(15L))
             .putLong(KEY_HC_SYNC_RANGE, settings.hcSyncRangeHours.coerceAtLeast(1L))
+            .putBoolean(KEY_LOCATION_ENABLED, settings.locationTrackingEnabled)
             .apply()
     }
 
@@ -154,6 +156,7 @@ class SettingsStore(context: Context) {
         private const val KEY_HC_SYNC_ENABLED = "hc_sync_enabled"
         private const val KEY_HC_SYNC_INTERVAL = "hc_sync_interval_minutes"
         private const val KEY_HC_SYNC_RANGE = "hc_sync_range_hours"
+        private const val KEY_LOCATION_ENABLED = "location_tracking_enabled"
         private const val MAX_LOG_ITEMS = 240
         private val LOG_TIME_FORMAT =
             java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")

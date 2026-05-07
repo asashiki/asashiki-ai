@@ -16,6 +16,8 @@ data class AgentSettings(
     val hcSyncEnabled: Boolean = true,
     val hcSyncIntervalMinutes: Long = 60,
     val hcSyncRangeHours: Long = 24,
+    // Location tracking settings
+    val locationTrackingEnabled: Boolean = false,
 )
 
 data class AppCustomRule(
