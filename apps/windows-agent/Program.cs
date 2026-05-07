@@ -233,13 +233,10 @@ class SettingsForm : Form
         var saveBtn = new Button { Text = "保存", Width = 80 };
         saveBtn.Click += (_, _) =>
         {
-            Config = Config with
-            {
-                ServerUrl = _urlBox.Text.Trim(),
-                Token = _tokenBox.Text.Trim(),
-                ReportIntervalSeconds = (int)_intervalBox.Value,
-                AfkThresholdSeconds = (int)_afkBox.Value
-            };
+            Config.ServerUrl = _urlBox.Text.Trim();
+            Config.Token = _tokenBox.Text.Trim();
+            Config.ReportIntervalSeconds = (int)_intervalBox.Value;
+            Config.AfkThresholdSeconds = (int)_afkBox.Value;
             DialogResult = DialogResult.OK;
             Close();
         };
