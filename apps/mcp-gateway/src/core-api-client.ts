@@ -1,4 +1,5 @@
 import {
+  weatherSchema,
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
@@ -361,6 +362,12 @@ export function createCoreApiClient(baseUrl: string) {
         throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
       }
       return archiveFileDeleteResultSchema.parse(await response.json());
+    },
+
+    async getWeather() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/weather"));
+      if (!res.ok) throw new Error("Weather unavailable.");
+      return weatherSchema.parse(await res.json());
     },
 
     async getSteamRecentGames() {

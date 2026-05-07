@@ -700,6 +700,40 @@ export const deviceTimelineInputSchema = z.object({
 
 export type DeviceTimelineInput = z.infer<typeof deviceTimelineInputSchema>;
 
+// ─── Weather ──────────────────────────────────────────────────────────────────
+
+export const weatherCurrentSchema = z.object({
+  time: z.string(),
+  temperatureC: z.number(),
+  feelsLikeC: z.number(),
+  humidity: z.number(),
+  windSpeedKmh: z.number(),
+  precipitationMm: z.number(),
+  weatherCode: z.number().int(),
+  description: z.string()
+});
+
+export const weatherForecastDaySchema = z.object({
+  date: z.string(),
+  maxC: z.number(),
+  minC: z.number(),
+  precipitationMm: z.number(),
+  maxWindKmh: z.number(),
+  weatherCode: z.number().int(),
+  description: z.string()
+});
+
+export const weatherSchema = z.object({
+  fetchedAt: z.string(),
+  location: z.string(),
+  latitude: z.number(),
+  longitude: z.number(),
+  current: weatherCurrentSchema,
+  forecast: z.array(weatherForecastDaySchema)
+});
+
+export type Weather = z.infer<typeof weatherSchema>;
+
 // ─── Steam ────────────────────────────────────────────────────────────────────
 
 export const steamRecentGameSchema = z.object({

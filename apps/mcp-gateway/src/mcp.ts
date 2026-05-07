@@ -8,6 +8,7 @@ import {
   okxAccountBalanceSchema,
   okxAssetBalancesSchema,
   okxPositionsSchema,
+  weatherSchema,
   steamRecentGamesSchema,
   steamPlayerSummarySchema,
   archiveFileListInputSchema,
@@ -76,7 +77,8 @@ const mcpToolIds = [
   "get_okx_positions",
   "get_okx_assets",
   "get_steam_recent_games",
-  "get_steam_profile"
+  "get_steam_profile",
+  "get_weather"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -250,6 +252,13 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
+    id: "get_weather",
+    title: "Get Current Weather",
+    description:
+      "Return current weather and 4-day forecast for the configured location (default: 嘉兴). Includes temperature, humidity, wind speed, precipitation, and WMO weather description in Chinese.",
+    readOnlyHint: true
+  },
+  {
     id: "get_steam_recent_games",
     title: "Get Steam Recently Played Games",
     description:
@@ -341,6 +350,7 @@ const searchArchiveTool = mcpToolCatalog.find(
 const getOkxBalanceTool = mcpToolCatalog.find((t) => t.id === "get_okx_balance")!;
 const getOkxPositionsTool = mcpToolCatalog.find((t) => t.id === "get_okx_positions")!;
 const getOkxAssetsTool = mcpToolCatalog.find((t) => t.id === "get_okx_assets")!;
+const getWeatherTool = mcpToolCatalog.find((t) => t.id === "get_weather")!;
 const getSteamRecentGamesTool = mcpToolCatalog.find((t) => t.id === "get_steam_recent_games")!;
 const getSteamProfileTool = mcpToolCatalog.find((t) => t.id === "get_steam_profile")!;
 
@@ -872,6 +882,30 @@ export function createMcpGatewayServer(client: CoreApiClient) {
       const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
       return {
         content: [{ type: "text", text: summary || "Empty directory." }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_weather",
+    {
+      title: getWeatherTool.title,
+      description: getWeatherTool.description,
+      inputSchema: z.object({}),
+      outputSchema: weatherSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const output = await client.getWeather();
+      const c = output.current;
+      const forecastStr = output.forecast
+        .slice(1, 4)
+        .map((d) => `${d.date}: ${d.minC}~${d.maxC}°C ${d.description}`)
+        .join(" | ");
+      const text = `${output.location} 当前: ${c.temperatureC}°C (体感${c.feelsLikeC}°C) ${c.description} 湿度${c.humidity}% | 未来: ${forecastStr}`;
+      return {
+        content: [{ type: "text", text }],
         structuredContent: output
       };
     }

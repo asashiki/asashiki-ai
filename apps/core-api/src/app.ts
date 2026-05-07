@@ -40,6 +40,7 @@ import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
 import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
 import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
 import { createSteamConnector, parseSteamEnv } from "./connectors/steam.js";
+import { fetchWeather, parseWeatherConfig } from "./connectors/weather.js";
 import { createRepository } from "./repository.js";
 
 export const coreApiEnvSchema = z.object({
@@ -164,6 +165,7 @@ export async function createCoreApiApp(options?: {
   const okx = okxConfig ? createOkxConnector(okxConfig) : null;
   const steamConfig = parseSteamEnv(process.env);
   const steam = steamConfig ? createSteamConnector(steamConfig) : null;
+  const weatherConfig = parseWeatherConfig(process.env);
 
   const manifest = serviceManifestSchema.parse({
     id: "core-api",
@@ -712,6 +714,12 @@ export async function createCoreApiApp(options?: {
     if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
     try { return await okx.getAssetBalances(); }
     catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
+  });
+
+  // Weather endpoint
+  server.get("/api/weather", async (_request, reply) => {
+    try { return await fetchWeather(weatherConfig); }
+    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "Weather unavailable." }; }
   });
 
   // Steam read-only endpoints
