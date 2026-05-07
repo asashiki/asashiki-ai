@@ -84,13 +84,13 @@ curl http://127.0.0.1:4100/console
 VPS 项目路径：
 
 ```bash
-/root/apps/asashiki-ai/asashiki-ai
+/opt/apps/asashiki-ai/asashiki-ai
 ```
 
 标准更新流程：
 
 ```bash
-cd /root/apps/asashiki-ai/asashiki-ai
+cd /opt/apps/asashiki-ai/asashiki-ai
 git pull origin main
 docker compose --env-file .env.production -f infra/docker/compose.yaml down
 docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build

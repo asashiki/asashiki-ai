@@ -83,6 +83,50 @@ export function migrateDatabase(database: DatabaseSync) {
       metadata_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS device_states (
+      device_id TEXT PRIMARY KEY,
+      device_name TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      app_id TEXT,
+      window_title TEXT,
+      last_seen_at TEXT NOT NULL,
+      extra_json TEXT,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS device_activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      app_id TEXT NOT NULL,
+      window_title TEXT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      extra_json TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_device_activities_device_started
+      ON device_activities(device_id, started_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_device_activities_started
+      ON device_activities(started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS health_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      value REAL,
+      value_json TEXT,
+      unit TEXT,
+      recorded_at TEXT NOT NULL,
+      source TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(device_id, type, recorded_at)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_health_records_recorded
+      ON health_records(recorded_at DESC, type);
   `);
 }
 

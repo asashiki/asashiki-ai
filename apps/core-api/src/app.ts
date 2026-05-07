@@ -7,6 +7,10 @@ import {
   connectorSchema,
   connectorSummarySchema,
   createServiceHealth,
+  deviceReportInputSchema,
+  diaryUpdateInputSchema,
+  diaryWriteInputSchema,
+  healthRecordsBatchInputSchema,
   recentContextSchema,
   remoteMcpServerSchema,
   remoteMcpToolInvokeInputSchema,
@@ -25,6 +29,7 @@ import {
 } from "./connectors/remote-mcp.js";
 import { createArchiveClient } from "./connectors/archive.js";
 import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
+import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
 import { createRepository } from "./repository.js";
 
 export const coreApiEnvSchema = z.object({
@@ -38,7 +43,8 @@ export const coreApiEnvSchema = z.object({
   REMOTE_MCP_SERVERS_JSON: z.string().optional(),
   SUPABASE_TIME_LOG_URL: z.string().url().optional(),
   SUPABASE_TIME_LOG_BEARER_TOKEN: z.string().min(1).optional(),
-  SUPABASE_TIME_LOG_NAME: z.string().min(1).default("Supabase 时间日志")
+  SUPABASE_TIME_LOG_NAME: z.string().min(1).default("Supabase 时间日志"),
+  DEVICE_TOKENS_JSON: z.string().optional()
 });
 
 export type CoreApiEnv = z.infer<typeof coreApiEnvSchema>;
@@ -61,7 +67,8 @@ export function loadCoreApiEnv(source: NodeJS.ProcessEnv): CoreApiEnv {
     ),
     SUPABASE_TIME_LOG_NAME:
       getOptionalEnvValue(source, "SUPABASE_TIME_LOG_NAME") ??
-      "Supabase 时间日志"
+      "Supabase 时间日志",
+    DEVICE_TOKENS_JSON: getOptionalEnvValue(source, "DEVICE_TOKENS_JSON")
   };
 
   return coreApiEnvSchema.parse(
@@ -74,7 +81,8 @@ export function loadCoreApiEnv(source: NodeJS.ProcessEnv): CoreApiEnv {
       REMOTE_MCP_SERVERS_JSON: z.string().optional(),
       SUPABASE_TIME_LOG_URL: z.string().url().optional(),
       SUPABASE_TIME_LOG_BEARER_TOKEN: z.string().min(1).optional(),
-      SUPABASE_TIME_LOG_NAME: z.string().min(1).default("Supabase 时间日志")
+      SUPABASE_TIME_LOG_NAME: z.string().min(1).default("Supabase 时间日志"),
+      DEVICE_TOKENS_JSON: z.string().optional()
     })
   );
 }
@@ -141,6 +149,7 @@ export async function createCoreApiApp(options?: {
     bearerToken: env.SUPABASE_TIME_LOG_BEARER_TOKEN,
     connectorName: env.SUPABASE_TIME_LOG_NAME
   });
+  const deviceAuth = createDeviceAuth(parseDeviceTokens(env.DEVICE_TOKENS_JSON));
 
   const manifest = serviceManifestSchema.parse({
     id: "core-api",
@@ -176,14 +185,52 @@ export async function createCoreApiApp(options?: {
       }
     }
 
-    const [profile, connectorSummary, archiveStatus, remoteServers] =
+    const [profile, connectorSummary, archiveStatus, remoteServers, deviceCurrent, recentHealth] =
       await Promise.all([
         Promise.resolve(repository.getProfileSummary()),
         Promise.resolve(repository.getConnectorSummary()),
         Promise.resolve(archive.getStatus()),
-        remoteMcpRegistry.listServers()
+        remoteMcpRegistry.listServers(),
+        Promise.resolve(repository.getDeviceCurrent()),
+        Promise.resolve(repository.getHealthRecords({ limit: 10 }))
       ]);
-    const health = createServiceHealth(manifest, env.NODE_ENV, startedAt);
+    const svcHealth = createServiceHealth(manifest, env.NODE_ENV, startedAt);
+    const today = new Date().toISOString().slice(0, 10);
+    const activitySummary = repository.getDeviceActivitySummary(today);
+
+    function deviceRows() {
+      if (deviceCurrent.devices.length === 0) {
+        return `<tr><td colspan="2" class="muted">暂无设备上报记录。</td></tr>`;
+      }
+      return deviceCurrent.devices.map((d) => {
+        const statusClass = d.isOnline ? "ok" : "muted";
+        const extra = d.extra ? ` · ${escapeHtml(JSON.stringify(d.extra))}` : "";
+        return `<tr><th>${escapeHtml(d.deviceName)} <span class="muted">(${escapeHtml(d.platform)})</span></th><td class="${statusClass}">${d.isOnline ? "online" : "offline"} · ${escapeHtml(d.appId ?? "—")}${escapeHtml(d.windowTitle ? ` / ${d.windowTitle}` : "")}${extra} <span class="muted">${escapeHtml(d.lastSeenAt)}</span></td></tr>`;
+      }).join("\n        ");
+    }
+
+    function activityRows() {
+      if (activitySummary.perApp.length === 0) {
+        return `<tr><td colspan="2" class="muted">今日暂无活动记录。</td></tr>`;
+      }
+      return activitySummary.perApp.slice(0, 10).map((a) => {
+        const mins = Math.round(a.totalSeconds / 60);
+        return `<tr><th>${escapeHtml(a.appId)}</th><td>${escapeHtml(String(mins))} 分钟 · ${escapeHtml(String(a.count))} 次</td></tr>`;
+      }).join("\n        ");
+    }
+
+    function healthRows() {
+      if (recentHealth.records.length === 0) {
+        return `<tr><td colspan="2" class="muted">暂无健康数据上报记录。</td></tr>`;
+      }
+      return recentHealth.records.map((r) => {
+        const val = r.valueJson
+          ? escapeHtml(JSON.stringify(r.valueJson))
+          : `${escapeHtml(String(r.value ?? "—"))}${r.unit ? " " + escapeHtml(r.unit) : ""}`;
+        return `<tr><th>${escapeHtml(r.type)}</th><td>${val} <span class="muted">${escapeHtml(r.recordedAt)} · ${escapeHtml(r.deviceId)}</span></td></tr>`;
+      }).join("\n        ");
+    }
+
     const html = `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -213,7 +260,7 @@ export async function createCoreApiApp(options?: {
 
       <h2>服务</h2>
       <table>
-        <tr><th>Core API</th><td class="ok">online · uptime ${escapeHtml(health.uptimeSeconds)}s</td></tr>
+        <tr><th>Core API</th><td class="ok">online · uptime ${escapeHtml(svcHealth.uptimeSeconds)}s</td></tr>
         <tr><th>数据库</th><td><code>${escapeHtml(databasePath)}</code></td></tr>
         <tr><th>环境</th><td>${escapeHtml(env.NODE_ENV)}</td></tr>
       </table>
@@ -233,11 +280,28 @@ export async function createCoreApiApp(options?: {
         <tr><th>Diary path</th><td><code>${escapeHtml(archiveStatus.diaryPath ?? "not found")}</code></td></tr>
       </table>
 
+      <h2>设备 (${escapeHtml(deviceCurrent.devices.length)} 台)</h2>
+      <table>
+        ${deviceRows()}
+      </table>
+
+      <h2>今日应用活动 (${escapeHtml(today)})</h2>
+      <table>
+        ${activityRows()}
+      </table>
+
+      <h2>最近健康数据 (最新 10 条)</h2>
+      <table>
+        ${healthRows()}
+      </table>
+
       <h2>常用检查</h2>
       <table>
         <tr><th>健康检查</th><td><code>/health</code></td></tr>
         <tr><th>MCP 入口</th><td><code>https://mcp.asashiki.com/mcp</code></td></tr>
         <tr><th>日记列表 API</th><td><code>/api/archive/diary</code></td></tr>
+        <tr><th>设备状态 API</th><td><code>/api/devices/current</code></td></tr>
+        <tr><th>健康记录 API</th><td><code>/api/devices/health</code></td></tr>
       </table>
 
       <p class="muted">更新时间：${escapeHtml(new Date().toISOString())}</p>
@@ -448,6 +512,96 @@ export async function createCoreApiApp(options?: {
       };
     }
   });
+  server.post("/api/devices/report", async (request, reply) => {
+    const identity = deviceAuth.resolve(request.headers.authorization);
+
+    if (!identity) {
+      reply.code(401);
+      return { error: "Invalid or missing device token." };
+    }
+
+    const payload = deviceReportInputSchema.parse(request.body ?? {});
+    return repository.recordDeviceReport(identity, payload);
+  });
+
+  server.post("/api/devices/health", async (request, reply) => {
+    const identity = deviceAuth.resolve(request.headers.authorization);
+
+    if (!identity) {
+      reply.code(401);
+      return { error: "Invalid or missing device token." };
+    }
+
+    const payload = healthRecordsBatchInputSchema.parse(request.body ?? {});
+    return repository.recordHealthBatch(identity, payload);
+  });
+
+  server.get("/api/devices/current", async () => repository.getDeviceCurrent());
+
+  server.get("/api/devices/timeline", async (request) => {
+    const query = z
+      .object({
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+      })
+      .parse(request.query);
+    const date = query.date ?? new Date().toISOString().slice(0, 10);
+    return repository.getDeviceTimeline(date);
+  });
+
+  server.get("/api/devices/activity-summary", async (request) => {
+    const query = z
+      .object({
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+      })
+      .parse(request.query);
+    const date = query.date ?? new Date().toISOString().slice(0, 10);
+    return repository.getDeviceActivitySummary(date);
+  });
+
+  server.get("/api/devices/health", async (request) =>
+    repository.getHealthRecords(request.query)
+  );
+
+  server.post("/api/archive/diary", async (request, reply) => {
+    const payload = diaryWriteInputSchema.parse(request.body ?? {});
+    try {
+      return archive.writeDiaryEntry(payload.date, payload.content, {
+        overwrite: payload.overwrite ?? false
+      });
+    } catch (error) {
+      reply.code(409);
+      return {
+        message:
+          error instanceof Error ? error.message : "Diary write failed."
+      };
+    }
+  });
+
+  server.put("/api/archive/diary/:date", async (request, reply) => {
+    const params = z
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
+      .parse(request.params);
+    const body = diaryUpdateInputSchema
+      .omit({ date: true })
+      .parse(request.body ?? {});
+
+    try {
+      return archive.updateDiaryEntry(params.date, body.content, body.mode);
+    } catch (error) {
+      reply.code(404);
+      return {
+        message:
+          error instanceof Error ? error.message : "Diary update failed."
+      };
+    }
+  });
+
   server.get("/api/audit/recent", async () => repository.listRecentAudit());
   server.get("/public/cards", async () => repository.getPublicCards());
   server.get("/public/status", async () => repository.getPublicStatus());

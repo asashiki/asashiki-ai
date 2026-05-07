@@ -4,6 +4,16 @@ import {
   auditEventSchema,
   connectorSchema,
   connectorSummarySchema,
+  deviceActivitySchema,
+  deviceActivitySummarySchema,
+  deviceCurrentSchema,
+  deviceReportInputSchema,
+  deviceStateSchema,
+  deviceTimelineSchema,
+  healthRecordSchema,
+  healthRecordsBatchInputSchema,
+  healthRecordsQueryInputSchema,
+  healthRecordsQuerySchema,
   healthSnapshotSchema,
   healthSummarySchema,
   journalCollectionSchema,
@@ -19,6 +29,19 @@ import {
   publicStatusSchema,
   publicStatusWidgetConfigSchema
 } from "@asashiki/schemas";
+import type {
+  DeviceReportInput,
+  HealthRecordsBatchInput,
+  HealthRecordsQueryInput
+} from "@asashiki/schemas";
+
+export type DeviceIdentity = {
+  deviceId: string;
+  deviceName: string;
+  platform: string;
+};
+
+const deviceOnlineWindowMs = 5 * 60 * 1000;
 
 type JsonRow = {
   [key: string]: unknown;
@@ -438,6 +461,323 @@ export function createRepository(database: DatabaseSync) {
         theme: "linen-signal",
         emptyMessage: "Public status is temporarily unavailable.",
         docsLabel: "Static Frontend Config"
+      });
+    },
+
+    recordDeviceReport(identity: DeviceIdentity, input: unknown) {
+      const payload = deviceReportInputSchema.parse(input);
+      const occurredAt = payload.occurredAt ?? new Date().toISOString();
+      const extraJson = payload.extra ? JSON.stringify(payload.extra) : null;
+
+      const previousState = database
+        .prepare(
+          `SELECT app_id, window_title, last_seen_at FROM device_states WHERE device_id = ?`
+        )
+        .get(identity.deviceId) as JsonRow | undefined;
+
+      const stateChanged =
+        !previousState ||
+        previousState.app_id !== payload.appId ||
+        previousState.window_title !== (payload.windowTitle ?? null);
+
+      if (stateChanged) {
+        if (
+          previousState &&
+          typeof previousState.last_seen_at === "string" &&
+          typeof previousState.app_id === "string"
+        ) {
+          database
+            .prepare(
+              `UPDATE device_activities
+                 SET ended_at = ?
+               WHERE device_id = ?
+                 AND ended_at IS NULL
+                 AND app_id = ?`
+            )
+            .run(
+              occurredAt,
+              identity.deviceId,
+              previousState.app_id
+            );
+        }
+
+        database
+          .prepare(
+            `INSERT INTO device_activities (
+              device_id, app_id, window_title, started_at, ended_at, extra_json, created_at
+            ) VALUES (?, ?, ?, ?, NULL, ?, ?)`
+          )
+          .run(
+            identity.deviceId,
+            payload.appId,
+            payload.windowTitle ?? null,
+            occurredAt,
+            extraJson,
+            new Date().toISOString()
+          );
+      }
+
+      database
+        .prepare(
+          `INSERT INTO device_states (
+            device_id, device_name, platform, app_id, window_title, last_seen_at, extra_json, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(device_id) DO UPDATE SET
+            device_name = excluded.device_name,
+            platform = excluded.platform,
+            app_id = excluded.app_id,
+            window_title = excluded.window_title,
+            last_seen_at = excluded.last_seen_at,
+            extra_json = excluded.extra_json,
+            updated_at = excluded.updated_at`
+        )
+        .run(
+          identity.deviceId,
+          identity.deviceName,
+          identity.platform,
+          payload.appId,
+          payload.windowTitle ?? null,
+          occurredAt,
+          extraJson,
+          new Date().toISOString()
+        );
+
+      return {
+        ok: true,
+        deviceId: identity.deviceId,
+        stateChanged,
+        recordedAt: occurredAt
+      };
+    },
+
+    getDeviceCurrent() {
+      const now = Date.now();
+      const rows = database
+        .prepare(
+          `SELECT device_id, device_name, platform, app_id, window_title, last_seen_at, extra_json
+           FROM device_states
+           ORDER BY last_seen_at DESC`
+        )
+        .all() as JsonRow[];
+
+      const devices = rows.map((row) =>
+        deviceStateSchema.parse({
+          deviceId: row.device_id,
+          deviceName: row.device_name,
+          platform: row.platform,
+          appId: row.app_id ?? null,
+          windowTitle: row.window_title ?? null,
+          lastSeenAt: row.last_seen_at,
+          isOnline:
+            typeof row.last_seen_at === "string" &&
+            now - new Date(row.last_seen_at).getTime() < deviceOnlineWindowMs,
+          extra:
+            typeof row.extra_json === "string" && row.extra_json.length > 0
+              ? (parseJsonObject(row.extra_json) as Record<string, unknown>)
+              : null
+        })
+      );
+
+      return deviceCurrentSchema.parse({
+        fetchedAt: new Date().toISOString(),
+        devices
+      });
+    },
+
+    getDeviceTimeline(date: string) {
+      const dayStart = `${date}T00:00:00.000Z`;
+      const dayEnd = `${date}T23:59:59.999Z`;
+
+      const rows = database
+        .prepare(
+          `SELECT id, device_id, app_id, window_title, started_at, ended_at, extra_json
+           FROM device_activities
+           WHERE started_at BETWEEN ? AND ?
+           ORDER BY started_at ASC`
+        )
+        .all(dayStart, dayEnd) as JsonRow[];
+
+      const activities = rows.map((row) => {
+        const startedAt =
+          typeof row.started_at === "string" ? row.started_at : "";
+        const endedAt =
+          typeof row.ended_at === "string" ? row.ended_at : null;
+        const durationSeconds =
+          endedAt && startedAt
+            ? Math.max(
+                0,
+                Math.round(
+                  (new Date(endedAt).getTime() -
+                    new Date(startedAt).getTime()) /
+                    1000
+                )
+              )
+            : null;
+
+        return deviceActivitySchema.parse({
+          id: typeof row.id === "number" ? row.id : 0,
+          deviceId: row.device_id,
+          appId: row.app_id,
+          windowTitle: row.window_title ?? null,
+          startedAt,
+          endedAt,
+          durationSeconds,
+          extra:
+            typeof row.extra_json === "string" && row.extra_json.length > 0
+              ? (parseJsonObject(row.extra_json) as Record<string, unknown>)
+              : null
+        });
+      });
+
+      return deviceTimelineSchema.parse({
+        date,
+        fetchedAt: new Date().toISOString(),
+        activities
+      });
+    },
+
+    getDeviceActivitySummary(date: string) {
+      const timeline = this.getDeviceTimeline(date);
+      const buckets = new Map<
+        string,
+        { appId: string; windowTitle: string | null; total: number; count: number }
+      >();
+      let totalSeconds = 0;
+
+      for (const activity of timeline.activities) {
+        if (activity.durationSeconds === null) {
+          continue;
+        }
+
+        const key = activity.appId;
+        const existing = buckets.get(key);
+
+        if (existing) {
+          existing.total += activity.durationSeconds;
+          existing.count += 1;
+        } else {
+          buckets.set(key, {
+            appId: activity.appId,
+            windowTitle: activity.windowTitle,
+            total: activity.durationSeconds,
+            count: 1
+          });
+        }
+
+        totalSeconds += activity.durationSeconds;
+      }
+
+      const perApp = [...buckets.values()]
+        .map((bucket) => ({
+          appId: bucket.appId,
+          windowTitle: bucket.windowTitle,
+          totalSeconds: bucket.total,
+          count: bucket.count
+        }))
+        .sort((left, right) => right.totalSeconds - left.totalSeconds)
+        .slice(0, 50);
+
+      return deviceActivitySummarySchema.parse({
+        date,
+        fetchedAt: new Date().toISOString(),
+        perApp,
+        totalSeconds
+      });
+    },
+
+    recordHealthBatch(identity: DeviceIdentity, input: unknown) {
+      const payload = healthRecordsBatchInputSchema.parse(input);
+      const insert = database.prepare(
+        `INSERT INTO health_records (
+          device_id, type, value, value_json, unit, recorded_at, source, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(device_id, type, recorded_at) DO UPDATE SET
+          value = excluded.value,
+          value_json = excluded.value_json,
+          unit = excluded.unit,
+          source = excluded.source`
+      );
+      const createdAt = new Date().toISOString();
+      let inserted = 0;
+
+      for (const record of payload.records) {
+        insert.run(
+          identity.deviceId,
+          record.type,
+          typeof record.value === "number" ? record.value : null,
+          record.valueJson ? JSON.stringify(record.valueJson) : null,
+          record.unit ?? null,
+          record.recordedAt,
+          record.source ?? null,
+          createdAt
+        );
+        inserted += 1;
+      }
+
+      return {
+        ok: true,
+        deviceId: identity.deviceId,
+        recordsReceived: payload.records.length,
+        upserted: inserted,
+        savedAt: createdAt
+      };
+    },
+
+    getHealthRecords(input: unknown) {
+      const query = healthRecordsQueryInputSchema.parse(input ?? {});
+      const filters: string[] = [];
+      const params: unknown[] = [];
+
+      if (query.type) {
+        filters.push("type = ?");
+        params.push(query.type);
+      }
+
+      if (query.from) {
+        filters.push("recorded_at >= ?");
+        params.push(query.from);
+      }
+
+      if (query.to) {
+        filters.push("recorded_at <= ?");
+        params.push(query.to);
+      }
+
+      if (query.deviceId) {
+        filters.push("device_id = ?");
+        params.push(query.deviceId);
+      }
+
+      const limit = Math.min(Math.max(query.limit ?? 100, 1), 500);
+      const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+      const sql = `SELECT id, device_id, type, value, value_json, unit, recorded_at, source, created_at
+                   FROM health_records
+                   ${where}
+                   ORDER BY recorded_at DESC
+                   LIMIT ${limit}`;
+
+      const rows = database.prepare(sql).all(...params) as JsonRow[];
+
+      const records = rows.map((row) =>
+        healthRecordSchema.parse({
+          id: typeof row.id === "number" ? row.id : 0,
+          deviceId: row.device_id,
+          type: row.type,
+          value: typeof row.value === "number" ? row.value : null,
+          valueJson:
+            typeof row.value_json === "string" && row.value_json.length > 0
+              ? (parseJsonObject(row.value_json) as Record<string, unknown>)
+              : null,
+          unit: row.unit ?? null,
+          recordedAt: row.recorded_at,
+          source: row.source ?? null,
+          createdAt: row.created_at
+        })
+      );
+
+      return healthRecordsQuerySchema.parse({
+        fetchedAt: new Date().toISOString(),
+        records
       });
     }
   };

@@ -5,6 +5,14 @@ import {
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
+  deviceActivitySummarySchema,
+  deviceCurrentSchema,
+  deviceTimelineSchema,
+  diaryUpdateInputSchema,
+  diaryWriteInputSchema,
+  diaryWriteResultSchema,
+  healthRecordsQueryInputSchema,
+  healthRecordsQuerySchema,
   healthSummarySchema,
   journalDraftInputSchema,
   journalDraftSavedSchema,
@@ -158,6 +166,105 @@ export function createCoreApiClient(baseUrl: string) {
       }
 
       return timeLogLookupResultSchema.parse(await response.json());
+    },
+
+    async getDeviceCurrent() {
+      const response = await fetch(resolveUrl(baseUrl, "/api/devices/current"));
+
+      if (!response.ok) {
+        throw new Error("Failed to load device status from Core API.");
+      }
+
+      return deviceCurrentSchema.parse(await response.json());
+    },
+
+    async getDeviceActivitySummary(date?: string) {
+      const params = date ? `?date=${encodeURIComponent(date)}` : "";
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/devices/activity-summary${params}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load device activity summary from Core API.");
+      }
+
+      return deviceActivitySummarySchema.parse(await response.json());
+    },
+
+    async getDeviceTimeline(date?: string) {
+      const params = date ? `?date=${encodeURIComponent(date)}` : "";
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/devices/timeline${params}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load device timeline from Core API.");
+      }
+
+      return deviceTimelineSchema.parse(await response.json());
+    },
+
+    async getHealthRecords(input: unknown) {
+      const query = healthRecordsQueryInputSchema.parse(input ?? {});
+      const params = new URLSearchParams();
+      if (query.type) params.set("type", query.type);
+      if (query.from) params.set("from", query.from);
+      if (query.to) params.set("to", query.to);
+      if (query.deviceId) params.set("deviceId", query.deviceId);
+      if (query.limit) params.set("limit", String(query.limit));
+      const qs = params.toString();
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/devices/health${qs ? `?${qs}` : ""}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load health records from Core API.");
+      }
+
+      return healthRecordsQuerySchema.parse(await response.json());
+    },
+
+    async writeDiaryEntry(input: unknown) {
+      const payload = diaryWriteInputSchema.parse(input);
+      const response = await fetch(resolveUrl(baseUrl, "/api/archive/diary"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(
+          typeof body.message === "string"
+            ? body.message
+            : "Failed to write diary entry via Core API."
+        );
+      }
+
+      return diaryWriteResultSchema.parse(await response.json());
+    },
+
+    async updateDiaryEntry(input: unknown) {
+      const payload = diaryUpdateInputSchema.parse(input);
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/archive/diary/${encodeURIComponent(payload.date)}`),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: payload.content, mode: payload.mode })
+        }
+      );
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(
+          typeof body.message === "string"
+            ? body.message
+            : "Failed to update diary entry via Core API."
+        );
+      }
+
+      return diaryWriteResultSchema.parse(await response.json());
     }
   };
 }

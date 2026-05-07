@@ -18,11 +18,12 @@ services:
       SUPABASE_TIME_LOG_URL: ${SUPABASE_TIME_LOG_URL:-}
       SUPABASE_TIME_LOG_BEARER_TOKEN: ${SUPABASE_TIME_LOG_BEARER_TOKEN:-}
       SUPABASE_TIME_LOG_NAME: ${SUPABASE_TIME_LOG_NAME:-Supabase 时间日志}
+      DEVICE_TOKENS_JSON: ${DEVICE_TOKENS_JSON:-}
     ports:
       - "${CORE_API_BIND_HOST:-127.0.0.1}:${CORE_API_PORT:-4100}:${CORE_API_PORT:-4100}"
     volumes:
       - core_api_data:/data
-      - ${ASASHIKI_ARCHIVE_HOST_PATH:-/opt/asashiki/Asashiki_Archive}:/archive:ro
+      - ${ASASHIKI_ARCHIVE_HOST_PATH:-/opt/asashiki/Asashiki_Archive}:/archive:rw
     restart: unless-stopped
     healthcheck:
       test:

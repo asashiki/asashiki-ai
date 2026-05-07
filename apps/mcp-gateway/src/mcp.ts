@@ -6,6 +6,13 @@ import {
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
+  deviceActivitySummarySchema,
+  deviceCurrentSchema,
+  diaryUpdateInputSchema,
+  diaryWriteInputSchema,
+  diaryWriteResultSchema,
+  healthRecordsQueryInputSchema,
+  healthRecordsQuerySchema,
   healthSummarySchema,
   journalDraftInputSchema,
   journalDraftSavedSchema,
@@ -33,7 +40,12 @@ const mcpToolIds = [
   "get_archive_status",
   "list_diary_entries",
   "read_diary_entry",
-  "lookup_time_log_at"
+  "lookup_time_log_at",
+  "get_device_status",
+  "get_device_activity_summary",
+  "get_health_metrics",
+  "write_diary_entry",
+  "update_diary_entry"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -102,6 +114,41 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     description:
       "Look up the Supabase-backed time log around a specific timestamp through the Core API.",
     readOnlyHint: true
+  },
+  {
+    id: "get_device_status",
+    title: "Get Device Status",
+    description:
+      "Return the current state of all registered devices (phone, desktop, etc.) including the active app, battery, network, and last-seen time.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_device_activity_summary",
+    title: "Get Device Activity Summary",
+    description:
+      "Return a per-app usage summary for a given date (default: today). Shows total minutes and launch count per app across all devices.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_health_metrics",
+    title: "Get Health Metrics",
+    description:
+      "Query raw health records uploaded from HealthConnect (heart rate, steps, sleep, etc.). Supports filtering by type, date range, and device.",
+    readOnlyHint: true
+  },
+  {
+    id: "write_diary_entry",
+    title: "Write Diary Entry",
+    description:
+      "Create a new Markdown diary file in the Archive (YYYY-MM-DD.md). Fails if the file already exists unless overwrite=true.",
+    readOnlyHint: false
+  },
+  {
+    id: "update_diary_entry",
+    title: "Update Diary Entry",
+    description:
+      "Update an existing diary entry in the Archive. Supports replace (overwrite full content) or append (add to end).",
+    readOnlyHint: false
   }
 ]);
 
@@ -131,6 +178,21 @@ const readDiaryEntryTool = mcpToolCatalog.find(
 )!;
 const lookupTimeLogTool = mcpToolCatalog.find(
   (tool) => tool.id === "lookup_time_log_at"
+)!;
+const getDeviceStatusTool = mcpToolCatalog.find(
+  (tool) => tool.id === "get_device_status"
+)!;
+const getDeviceActivitySummaryTool = mcpToolCatalog.find(
+  (tool) => tool.id === "get_device_activity_summary"
+)!;
+const getHealthMetricsTool = mcpToolCatalog.find(
+  (tool) => tool.id === "get_health_metrics"
+)!;
+const writeDiaryEntryTool = mcpToolCatalog.find(
+  (tool) => tool.id === "write_diary_entry"
+)!;
+const updateDiaryEntryTool = mcpToolCatalog.find(
+  (tool) => tool.id === "update_diary_entry"
 )!;
 
 export function createMcpGatewayServer(client: CoreApiClient) {
@@ -369,6 +431,106 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
+  server.registerTool(
+    "get_device_status",
+    {
+      title: getDeviceStatusTool.title,
+      description: getDeviceStatusTool.description,
+      inputSchema: z.object({}),
+      outputSchema: deviceCurrentSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const output = await client.getDeviceCurrent();
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_device_activity_summary",
+    {
+      title: getDeviceActivitySummaryTool.title,
+      description: getDeviceActivitySummaryTool.description,
+      inputSchema: z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+      }),
+      outputSchema: deviceActivitySummarySchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: { date?: string }) => {
+      const output = await client.getDeviceActivitySummary(input.date);
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_health_metrics",
+    {
+      title: getHealthMetricsTool.title,
+      description: getHealthMetricsTool.description,
+      inputSchema: healthRecordsQueryInputSchema,
+      outputSchema: healthRecordsQuerySchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof healthRecordsQueryInputSchema>) => {
+      const output = await client.getHealthRecords(input);
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "write_diary_entry",
+    {
+      title: writeDiaryEntryTool.title,
+      description: writeDiaryEntryTool.description,
+      inputSchema: diaryWriteInputSchema,
+      outputSchema: diaryWriteResultSchema
+    },
+    async (input: z.infer<typeof diaryWriteInputSchema>) => {
+      const output = await client.writeDiaryEntry(input);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Diary entry ${output.date} written (${output.mode}, ${output.bytesWritten} bytes).`
+          }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "update_diary_entry",
+    {
+      title: updateDiaryEntryTool.title,
+      description: updateDiaryEntryTool.description,
+      inputSchema: diaryUpdateInputSchema,
+      outputSchema: diaryWriteResultSchema
+    },
+    async (input: z.infer<typeof diaryUpdateInputSchema>) => {
+      const output = await client.updateDiaryEntry(input);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Diary entry ${output.date} updated (${output.mode}, ${output.bytesWritten} bytes).`
+          }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
   return server;
 }
 
@@ -493,6 +655,58 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
+      case "get_device_status": {
+        const output = await client.getDeviceCurrent();
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `读取到 ${output.devices.length} 台设备状态。`,
+          preview: output.devices[0]
+            ? `${output.devices[0].deviceName}: ${output.devices[0].appId ?? "idle"}`
+            : "暂无设备上报记录。",
+          executedAt
+        });
+      }
+      case "get_device_activity_summary": {
+        const output = await client.getDeviceActivitySummary();
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `今日活动：${output.perApp.length} 款应用，共 ${Math.round(output.totalSeconds / 60)} 分钟。`,
+          preview: output.perApp[0]
+            ? `${output.perApp[0].appId}: ${Math.round(output.perApp[0].totalSeconds / 60)} 分钟`
+            : "今日暂无活动记录。",
+          executedAt
+        });
+      }
+      case "get_health_metrics": {
+        const output = await client.getHealthRecords({ limit: 5 });
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `读取到 ${output.records.length} 条健康记录。`,
+          preview: output.records[0]
+            ? `${output.records[0].type}: ${output.records[0].value ?? JSON.stringify(output.records[0].valueJson)}`
+            : "暂无健康数据。",
+          executedAt
+        });
+      }
+      case "write_diary_entry":
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: "write_diary_entry smoke test 跳过（避免产生真实文件）。",
+          preview: null,
+          executedAt
+        });
+      case "update_diary_entry":
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: "update_diary_entry smoke test 跳过（避免改动真实文件）。",
+          preview: null,
+          executedAt
+        });
       default:
         return mcpToolTestResultSchema.parse({
           toolId,

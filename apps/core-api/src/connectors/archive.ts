@@ -1,15 +1,18 @@
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
-  statSync
+  statSync,
+  writeFileSync
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveStatusSchema,
-  connectorSchema
+  connectorSchema,
+  diaryWriteResultSchema
 } from "@asashiki/schemas";
 
 const diaryFilePattern = /^(\d{4}-\d{2}-\d{2})\.md$/;
@@ -269,9 +272,98 @@ export function createArchiveClient(options: {
       capabilities: [
         "read_archive_status",
         "list_diary_entries",
-        "read_diary_entry"
+        "read_diary_entry",
+        "write_diary_entry",
+        "update_diary_entry"
       ],
       exposureLevel: "private-personal"
+    });
+  }
+
+  function writeDiaryEntry(
+    date: string,
+    content: string,
+    options: { overwrite?: boolean } = {}
+  ) {
+    const diaryPath = getResolvedDiaryPath();
+
+    if (!diaryPath) {
+      throw new Error("Archive diary folder is not available.");
+    }
+
+    if (!diaryFilePattern.test(`${date}.md`)) {
+      throw new Error("Diary date must use YYYY-MM-DD.");
+    }
+
+    const targetPath = resolveInside(diaryPath, join(diaryPath, `${date}.md`));
+    const exists = existsSync(targetPath);
+
+    if (exists && !options.overwrite) {
+      throw new Error(
+        "Diary entry already exists. Pass overwrite=true to replace it."
+      );
+    }
+
+    if (!existsSync(diaryPath)) {
+      mkdirSync(diaryPath, { recursive: true });
+    }
+
+    writeFileSync(targetPath, content, { encoding: "utf8" });
+
+    const stats = statSync(targetPath);
+
+    return diaryWriteResultSchema.parse({
+      date,
+      title: createTitle(date, content),
+      path: join(basename(diaryPath), `${date}.md`),
+      excerpt: createExcerpt(content),
+      updatedAt: stats.mtime.toISOString(),
+      bytesWritten: stats.size,
+      mode: exists ? "replace" : "create"
+    });
+  }
+
+  function updateDiaryEntry(
+    date: string,
+    content: string,
+    mode: "replace" | "append" = "replace"
+  ) {
+    const diaryPath = getResolvedDiaryPath();
+
+    if (!diaryPath) {
+      throw new Error("Archive diary folder is not available.");
+    }
+
+    if (!diaryFilePattern.test(`${date}.md`)) {
+      throw new Error("Diary date must use YYYY-MM-DD.");
+    }
+
+    const targetPath = resolveInside(diaryPath, join(diaryPath, `${date}.md`));
+
+    if (!existsSync(targetPath)) {
+      throw new Error("Diary entry not found. Use writeDiaryEntry to create it.");
+    }
+
+    let nextContent = content;
+
+    if (mode === "append") {
+      const existing = readFileSync(targetPath, { encoding: "utf8", flag: "r" });
+      const separator = existing.endsWith("\n") ? "" : "\n";
+      nextContent = `${existing}${separator}${content}`;
+    }
+
+    writeFileSync(targetPath, nextContent, { encoding: "utf8" });
+
+    const stats = statSync(targetPath);
+
+    return diaryWriteResultSchema.parse({
+      date,
+      title: createTitle(date, nextContent),
+      path: join(basename(diaryPath), `${date}.md`),
+      excerpt: createExcerpt(nextContent),
+      updatedAt: stats.mtime.toISOString(),
+      bytesWritten: stats.size,
+      mode
     });
   }
 
@@ -279,6 +371,8 @@ export function createArchiveClient(options: {
     getStatus,
     listDiaryEntries,
     readDiaryEntry,
+    writeDiaryEntry,
+    updateDiaryEntry,
     getConnector
   };
 }

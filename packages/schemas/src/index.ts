@@ -380,6 +380,166 @@ export const auditEventSchema = z.object({
 
 export type AuditEvent = z.infer<typeof auditEventSchema>;
 
+export const deviceReportInputSchema = z.object({
+  appId: z.string().trim().min(1).max(120),
+  windowTitle: z.string().trim().max(256).optional().nullable(),
+  occurredAt: z.string().datetime().optional(),
+  extra: z.record(z.string(), z.unknown()).optional()
+});
+
+export type DeviceReportInput = z.infer<typeof deviceReportInputSchema>;
+
+export const deviceStateSchema = z.object({
+  deviceId: z.string().min(1),
+  deviceName: z.string().min(1),
+  platform: z.string().min(1),
+  appId: z.string().nullable(),
+  windowTitle: z.string().nullable(),
+  lastSeenAt: z.string().datetime(),
+  isOnline: z.boolean(),
+  extra: z.record(z.string(), z.unknown()).nullable()
+});
+
+export type DeviceState = z.infer<typeof deviceStateSchema>;
+
+export const deviceCurrentSchema = z.object({
+  fetchedAt: z.string().datetime(),
+  devices: z.array(deviceStateSchema)
+});
+
+export type DeviceCurrent = z.infer<typeof deviceCurrentSchema>;
+
+export const deviceActivitySchema = z.object({
+  id: z.number().int().nonnegative(),
+  deviceId: z.string().min(1),
+  appId: z.string().min(1),
+  windowTitle: z.string().nullable(),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime().nullable(),
+  durationSeconds: z.number().int().nonnegative().nullable(),
+  extra: z.record(z.string(), z.unknown()).nullable()
+});
+
+export type DeviceActivity = z.infer<typeof deviceActivitySchema>;
+
+export const deviceTimelineSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  fetchedAt: z.string().datetime(),
+  activities: z.array(deviceActivitySchema)
+});
+
+export type DeviceTimeline = z.infer<typeof deviceTimelineSchema>;
+
+export const deviceActivitySummaryEntrySchema = z.object({
+  appId: z.string().min(1),
+  windowTitle: z.string().nullable(),
+  totalSeconds: z.number().int().nonnegative(),
+  count: z.number().int().nonnegative()
+});
+
+export const deviceActivitySummarySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  fetchedAt: z.string().datetime(),
+  perApp: z.array(deviceActivitySummaryEntrySchema).max(50),
+  totalSeconds: z.number().int().nonnegative()
+});
+
+export type DeviceActivitySummary = z.infer<typeof deviceActivitySummarySchema>;
+
+export const healthRecordTypeSchema = z.enum([
+  "heart_rate",
+  "resting_heart_rate",
+  "heart_rate_variability",
+  "steps",
+  "distance",
+  "exercise",
+  "sleep",
+  "oxygen_saturation",
+  "body_temperature",
+  "respiratory_rate",
+  "blood_pressure",
+  "blood_glucose",
+  "weight",
+  "height",
+  "active_calories",
+  "total_calories",
+  "hydration",
+  "nutrition"
+]);
+
+export type HealthRecordType = z.infer<typeof healthRecordTypeSchema>;
+
+export const healthRecordInputSchema = z.object({
+  type: healthRecordTypeSchema,
+  value: z.number().optional(),
+  valueJson: z.record(z.string(), z.unknown()).optional(),
+  unit: z.string().min(1).max(32).optional(),
+  recordedAt: z.string().datetime(),
+  source: z.string().min(1).max(60).optional()
+});
+
+export type HealthRecordInput = z.infer<typeof healthRecordInputSchema>;
+
+export const healthRecordsBatchInputSchema = z.object({
+  records: z.array(healthRecordInputSchema).min(1).max(500)
+});
+
+export type HealthRecordsBatchInput = z.infer<typeof healthRecordsBatchInputSchema>;
+
+export const healthRecordSchema = z.object({
+  id: z.number().int().nonnegative(),
+  deviceId: z.string().min(1),
+  type: healthRecordTypeSchema,
+  value: z.number().nullable(),
+  valueJson: z.record(z.string(), z.unknown()).nullable(),
+  unit: z.string().nullable(),
+  recordedAt: z.string().datetime(),
+  source: z.string().nullable(),
+  createdAt: z.string().datetime()
+});
+
+export type HealthRecord = z.infer<typeof healthRecordSchema>;
+
+export const healthRecordsQueryInputSchema = z.object({
+  type: healthRecordTypeSchema.optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  deviceId: z.string().min(1).optional(),
+  limit: z.number().int().positive().max(500).optional()
+});
+
+export type HealthRecordsQueryInput = z.infer<typeof healthRecordsQueryInputSchema>;
+
+export const healthRecordsQuerySchema = z.object({
+  fetchedAt: z.string().datetime(),
+  records: z.array(healthRecordSchema)
+});
+
+export type HealthRecordsQuery = z.infer<typeof healthRecordsQuerySchema>;
+
+export const diaryWriteInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  content: z.string().min(1).max(64 * 1024),
+  overwrite: z.boolean().optional()
+});
+
+export type DiaryWriteInput = z.infer<typeof diaryWriteInputSchema>;
+
+export const diaryUpdateInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  content: z.string().min(1).max(64 * 1024),
+  mode: z.enum(["replace", "append"]).default("replace")
+});
+
+export type DiaryUpdateInput = z.infer<typeof diaryUpdateInputSchema>;
+
+export const diaryWriteResultSchema = archiveDiaryEntryPreviewSchema.extend({
+  bytesWritten: z.number().int().nonnegative(),
+  mode: z.enum(["create", "replace", "append"])
+});
+
+export type DiaryWriteResult = z.infer<typeof diaryWriteResultSchema>;
+
 export function createServiceHealth(
   app: ServiceManifest,
   environment: "development" | "test" | "production",

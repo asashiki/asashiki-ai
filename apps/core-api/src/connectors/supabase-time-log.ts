@@ -137,6 +137,7 @@ function normalizeRow(row: RawRecord, fallbackIndex: number) {
       "title",
       "activity",
       "activity_name",
+      "category",
       "label",
       "name",
       "event",
