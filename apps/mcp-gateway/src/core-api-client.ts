@@ -4,6 +4,9 @@ import {
   archiveDiaryReadInputSchema,
   archiveFileDeleteInputSchema,
   archiveFileDeleteResultSchema,
+  okxAccountBalanceSchema,
+  okxAssetBalancesSchema,
+  okxPositionsSchema,
   archiveFileListInputSchema,
   archiveFileListResultSchema,
   archiveFileReadInputSchema,
@@ -325,6 +328,24 @@ export function createCoreApiClient(baseUrl: string) {
         throw new Error(typeof body.message === "string" ? body.message : "List failed.");
       }
       return archiveFileListResultSchema.parse(await response.json());
+    },
+
+    async getOkxBalance() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/okx/balance"));
+      if (!res.ok) throw new Error("OKX balance unavailable.");
+      return okxAccountBalanceSchema.parse(await res.json());
+    },
+
+    async getOkxPositions() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/okx/positions"));
+      if (!res.ok) throw new Error("OKX positions unavailable.");
+      return okxPositionsSchema.parse(await res.json());
+    },
+
+    async getOkxAssets() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/okx/assets"));
+      if (!res.ok) throw new Error("OKX asset balances unavailable.");
+      return okxAssetBalancesSchema.parse(await res.json());
     },
 
     async deleteArchiveFile(input: unknown) {

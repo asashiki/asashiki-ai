@@ -540,6 +540,62 @@ export const diaryWriteResultSchema = archiveDiaryEntryPreviewSchema.extend({
 
 export type DiaryWriteResult = z.infer<typeof diaryWriteResultSchema>;
 
+// ── OKX ───────────────────────────────────────────────────────────────────
+
+export const okxHoldingSchema = z.object({
+  currency: z.string(),
+  balance: z.number(),
+  available: z.number(),
+  frozen: z.number(),
+  valueUsd: z.number()
+});
+
+export const okxAccountBalanceSchema = z.object({
+  fetchedAt: z.string(),
+  totalEquityUsd: z.number(),
+  holdings: z.array(okxHoldingSchema)
+});
+
+export type OkxAccountBalance = z.infer<typeof okxAccountBalanceSchema>;
+
+export const okxPositionSchema = z.object({
+  instrument: z.string(),
+  type: z.string(),
+  side: z.string(),
+  size: z.number(),
+  entryPrice: z.number(),
+  markPrice: z.number(),
+  unrealizedPnl: z.number(),
+  unrealizedPnlRatio: z.number(),
+  leverage: z.number(),
+  margin: z.number(),
+  currency: z.string(),
+  updatedAt: z.string()
+});
+
+export const okxPositionsSchema = z.object({
+  fetchedAt: z.string(),
+  positions: z.array(okxPositionSchema)
+});
+
+export type OkxPositions = z.infer<typeof okxPositionsSchema>;
+
+export const okxAssetSchema = z.object({
+  currency: z.string(),
+  balance: z.number(),
+  available: z.number(),
+  frozen: z.number()
+});
+
+export const okxAssetBalancesSchema = z.object({
+  fetchedAt: z.string(),
+  assets: z.array(okxAssetSchema)
+});
+
+export type OkxAssetBalances = z.infer<typeof okxAssetBalancesSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────
+
 export const diaryDeleteResultSchema = z.object({
   date: z.string(),
   deleted: z.boolean(),

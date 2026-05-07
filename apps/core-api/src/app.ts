@@ -38,6 +38,7 @@ import {
 import { createArchiveClient } from "./connectors/archive.js";
 import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
 import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
+import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
 import { createRepository } from "./repository.js";
 
 export const coreApiEnvSchema = z.object({
@@ -158,6 +159,8 @@ export async function createCoreApiApp(options?: {
     connectorName: env.SUPABASE_TIME_LOG_NAME
   });
   const deviceAuth = createDeviceAuth(parseDeviceTokens(env.DEVICE_TOKENS_JSON));
+  const okxConfig = parseOkxEnv(process.env);
+  const okx = okxConfig ? createOkxConnector(okxConfig) : null;
 
   const manifest = serviceManifestSchema.parse({
     id: "core-api",
@@ -687,6 +690,25 @@ export async function createCoreApiApp(options?: {
   server.get("/api/devices/health-records", async (request) => {
     const input = healthRecordsQueryInputSchema.parse(request.query);
     return repository.getHealthRecords(input);
+  });
+
+  // OKX read-only endpoints
+  server.get("/api/okx/balance", async (_request, reply) => {
+    if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
+    try { return await okx.getAccountBalance(); }
+    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
+  });
+
+  server.get("/api/okx/positions", async (_request, reply) => {
+    if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
+    try { return await okx.getPositions(); }
+    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
+  });
+
+  server.get("/api/okx/assets", async (_request, reply) => {
+    if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
+    try { return await okx.getAssetBalances(); }
+    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
   });
 
   server.get("/api/audit/recent", async () => repository.listRecentAudit());

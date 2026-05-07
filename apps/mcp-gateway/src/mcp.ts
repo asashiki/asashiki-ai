@@ -5,6 +5,9 @@ import {
   archiveDiaryReadInputSchema,
   archiveFileDeleteInputSchema,
   archiveFileDeleteResultSchema,
+  okxAccountBalanceSchema,
+  okxAssetBalancesSchema,
+  okxPositionsSchema,
   archiveFileListInputSchema,
   archiveFileListResultSchema,
   archiveFileReadInputSchema,
@@ -66,7 +69,10 @@ const mcpToolIds = [
   "write_archive_file",
   "delete_archive_file",
   "list_archive_files",
-  "search_archive"
+  "search_archive",
+  "get_okx_balance",
+  "get_okx_positions",
+  "get_okx_assets"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -219,6 +225,27 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: false
   },
   {
+    id: "get_okx_balance",
+    title: "Get OKX Account Balance",
+    description:
+      "Return the trading account total equity (USD) and per-currency holdings from OKX. Read-only, IP-restricted.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_okx_positions",
+    title: "Get OKX Open Positions",
+    description:
+      "Return all open futures/perpetual positions on OKX including entry price, mark price, unrealized PnL, and leverage.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_okx_assets",
+    title: "Get OKX Funding Account Assets",
+    description:
+      "Return the funding account (资金账户) asset balances on OKX. Separate from the trading account.",
+    readOnlyHint: true
+  },
+  {
     id: "search_archive",
     title: "Search Archive",
     description:
@@ -293,6 +320,9 @@ const deleteArchiveFileTool = mcpToolCatalog.find(
 const searchArchiveTool = mcpToolCatalog.find(
   (tool) => tool.id === "search_archive"
 )!;
+const getOkxBalanceTool = mcpToolCatalog.find((t) => t.id === "get_okx_balance")!;
+const getOkxPositionsTool = mcpToolCatalog.find((t) => t.id === "get_okx_positions")!;
+const getOkxAssetsTool = mcpToolCatalog.find((t) => t.id === "get_okx_assets")!;
 
 export function createMcpGatewayServer(client: CoreApiClient) {
   const server = new McpServer(
@@ -631,6 +661,64 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
+    "get_okx_balance",
+    {
+      title: getOkxBalanceTool.title,
+      description: getOkxBalanceTool.description,
+      inputSchema: z.object({}),
+      outputSchema: okxAccountBalanceSchema
+    },
+    async () => {
+      const output = await client.getOkxBalance();
+      const top = output.holdings.slice(0, 3).map((h) => `${h.currency}=${h.valueUsd.toFixed(0)}U`).join(" ");
+      return {
+        content: [{ type: "text", text: `总权益: $${output.totalEquityUsd.toFixed(2)} | ${top}` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_okx_positions",
+    {
+      title: getOkxPositionsTool.title,
+      description: getOkxPositionsTool.description,
+      inputSchema: z.object({}),
+      outputSchema: okxPositionsSchema
+    },
+    async () => {
+      const output = await client.getOkxPositions();
+      const summary = output.positions.length === 0
+        ? "当前无持仓。"
+        : output.positions.map((p) => `${p.instrument} ${p.side} PnL=${p.unrealizedPnl.toFixed(2)}U`).join("\n");
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_okx_assets",
+    {
+      title: getOkxAssetsTool.title,
+      description: getOkxAssetsTool.description,
+      inputSchema: z.object({}),
+      outputSchema: okxAssetBalancesSchema
+    },
+    async () => {
+      const output = await client.getOkxAssets();
+      const summary = output.assets.length === 0
+        ? "资金账户为空。"
+        : output.assets.map((a) => `${a.currency}: ${a.balance}`).join(", ");
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
     "delete_archive_file",
     {
       title: deleteArchiveFileTool.title,
@@ -962,6 +1050,33 @@ export async function runMcpToolSmokeTest(
           toolId, ok: true,
           summary: `读取 ${output.path}，${output.size} 字节。`,
           preview: output.content.slice(0, 80),
+          executedAt
+        });
+      }
+      case "get_okx_balance": {
+        const output = await client.getOkxBalance();
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `OKX 账户权益 $${output.totalEquityUsd.toFixed(2)}，${output.holdings.length} 个币种持仓。`,
+          preview: output.holdings[0] ? `${output.holdings[0].currency}: $${output.holdings[0].valueUsd.toFixed(2)}` : "无持仓",
+          executedAt
+        });
+      }
+      case "get_okx_positions": {
+        const output = await client.getOkxPositions();
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: output.positions.length === 0 ? "当前无持仓。" : `${output.positions.length} 个持仓。`,
+          preview: output.positions[0]?.instrument ?? "无",
+          executedAt
+        });
+      }
+      case "get_okx_assets": {
+        const output = await client.getOkxAssets();
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `资金账户 ${output.assets.length} 个资产。`,
+          preview: output.assets[0] ? `${output.assets[0].currency}: ${output.assets[0].balance}` : "空",
           executedAt
         });
       }
