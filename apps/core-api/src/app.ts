@@ -39,6 +39,7 @@ import { createArchiveClient } from "./connectors/archive.js";
 import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
 import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
 import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
+import { createSteamConnector, parseSteamEnv } from "./connectors/steam.js";
 import { createRepository } from "./repository.js";
 
 export const coreApiEnvSchema = z.object({
@@ -161,6 +162,8 @@ export async function createCoreApiApp(options?: {
   const deviceAuth = createDeviceAuth(parseDeviceTokens(env.DEVICE_TOKENS_JSON));
   const okxConfig = parseOkxEnv(process.env);
   const okx = okxConfig ? createOkxConnector(okxConfig) : null;
+  const steamConfig = parseSteamEnv(process.env);
+  const steam = steamConfig ? createSteamConnector(steamConfig) : null;
 
   const manifest = serviceManifestSchema.parse({
     id: "core-api",
@@ -709,6 +712,19 @@ export async function createCoreApiApp(options?: {
     if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
     try { return await okx.getAssetBalances(); }
     catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
+  });
+
+  // Steam read-only endpoints
+  server.get("/api/steam/recent-games", async (_request, reply) => {
+    if (!steam) { reply.code(503); return { message: "Steam not configured." }; }
+    try { return await steam.getRecentlyPlayedGames(); }
+    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "Steam error." }; }
+  });
+
+  server.get("/api/steam/profile", async (_request, reply) => {
+    if (!steam) { reply.code(503); return { message: "Steam not configured." }; }
+    try { return await steam.getPlayerSummary(); }
+    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "Steam error." }; }
   });
 
   server.get("/api/audit/recent", async () => repository.listRecentAudit());

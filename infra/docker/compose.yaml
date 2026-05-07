@@ -22,6 +22,8 @@ services:
       OKX_API_KEY: ${OKX_API_KEY:-}
       OKX_SECRET_KEY: ${OKX_SECRET_KEY:-}
       OKX_PASSPHRASE: ${OKX_PASSPHRASE:-}
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
+      STEAM_USER_ID: ${STEAM_USER_ID:-}
     ports:
       - "${CORE_API_BIND_HOST:-127.0.0.1}:${CORE_API_PORT:-4100}:${CORE_API_PORT:-4100}"
     volumes:

@@ -8,6 +8,8 @@ import {
   okxAccountBalanceSchema,
   okxAssetBalancesSchema,
   okxPositionsSchema,
+  steamRecentGamesSchema,
+  steamPlayerSummarySchema,
   archiveFileListInputSchema,
   archiveFileListResultSchema,
   archiveFileReadInputSchema,
@@ -72,7 +74,9 @@ const mcpToolIds = [
   "search_archive",
   "get_okx_balance",
   "get_okx_positions",
-  "get_okx_assets"
+  "get_okx_assets",
+  "get_steam_recent_games",
+  "get_steam_profile"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -246,6 +250,20 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
+    id: "get_steam_recent_games",
+    title: "Get Steam Recently Played Games",
+    description:
+      "Return games played in the last 2 weeks from Steam, including playtime in minutes. Also shows all-time playtime per game.",
+    readOnlyHint: true
+  },
+  {
+    id: "get_steam_profile",
+    title: "Get Steam Player Profile",
+    description:
+      "Return the Steam player profile including display name, online status, current game being played, and last seen time.",
+    readOnlyHint: true
+  },
+  {
     id: "search_archive",
     title: "Search Archive",
     description:
@@ -323,6 +341,8 @@ const searchArchiveTool = mcpToolCatalog.find(
 const getOkxBalanceTool = mcpToolCatalog.find((t) => t.id === "get_okx_balance")!;
 const getOkxPositionsTool = mcpToolCatalog.find((t) => t.id === "get_okx_positions")!;
 const getOkxAssetsTool = mcpToolCatalog.find((t) => t.id === "get_okx_assets")!;
+const getSteamRecentGamesTool = mcpToolCatalog.find((t) => t.id === "get_steam_recent_games")!;
+const getSteamProfileTool = mcpToolCatalog.find((t) => t.id === "get_steam_profile")!;
 
 export function createMcpGatewayServer(client: CoreApiClient) {
   const server = new McpServer(
@@ -852,6 +872,46 @@ export function createMcpGatewayServer(client: CoreApiClient) {
       const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
       return {
         content: [{ type: "text", text: summary || "Empty directory." }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_steam_recent_games",
+    {
+      title: getSteamRecentGamesTool.title,
+      description: getSteamRecentGamesTool.description,
+      inputSchema: z.object({}),
+      outputSchema: steamRecentGamesSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const output = await client.getSteamRecentGames();
+      const summary = output.games.length === 0
+        ? "最近两周没有游戏记录。"
+        : output.games.map((g) => `${g.name}: ${Math.round(g.playtime2WeeksMinutes / 60 * 10) / 10}h`).join(", ");
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "get_steam_profile",
+    {
+      title: getSteamProfileTool.title,
+      description: getSteamProfileTool.description,
+      inputSchema: z.object({}),
+      outputSchema: steamPlayerSummarySchema,
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const output = await client.getSteamProfile();
+      const playing = output.currentGame ? ` | 正在玩: ${output.currentGame}` : "";
+      return {
+        content: [{ type: "text", text: `${output.displayName} (${output.status})${playing}` }],
         structuredContent: output
       };
     }

@@ -700,6 +700,42 @@ export const deviceTimelineInputSchema = z.object({
 
 export type DeviceTimelineInput = z.infer<typeof deviceTimelineInputSchema>;
 
+// ─── Steam ────────────────────────────────────────────────────────────────────
+
+export const steamRecentGameSchema = z.object({
+  appId: z.number().int(),
+  name: z.string(),
+  playtime2WeeksMinutes: z.number().int(),
+  playtimeForeverMinutes: z.number().int(),
+  iconUrl: z.string().nullable()
+});
+
+export const steamRecentGamesSchema = z.object({
+  fetchedAt: z.string(),
+  steamId: z.string(),
+  totalCount: z.number().int(),
+  games: z.array(steamRecentGameSchema)
+});
+
+export type SteamRecentGames = z.infer<typeof steamRecentGamesSchema>;
+
+export const steamPlayerSummarySchema = z.object({
+  fetchedAt: z.string(),
+  steamId: z.string(),
+  displayName: z.string(),
+  profileUrl: z.string(),
+  avatarUrl: z.string(),
+  status: z.string(),
+  currentGame: z.string().nullable(),
+  currentGameId: z.number().int().nullable(),
+  country: z.string().nullable(),
+  lastLogoffAt: z.string().nullable()
+});
+
+export type SteamPlayerSummary = z.infer<typeof steamPlayerSummarySchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function createServiceHealth(
   app: ServiceManifest,
   environment: "development" | "test" | "production",

@@ -7,6 +7,8 @@ import {
   okxAccountBalanceSchema,
   okxAssetBalancesSchema,
   okxPositionsSchema,
+  steamRecentGamesSchema,
+  steamPlayerSummarySchema,
   archiveFileListInputSchema,
   archiveFileListResultSchema,
   archiveFileReadInputSchema,
@@ -359,6 +361,18 @@ export function createCoreApiClient(baseUrl: string) {
         throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
       }
       return archiveFileDeleteResultSchema.parse(await response.json());
+    },
+
+    async getSteamRecentGames() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/steam/recent-games"));
+      if (!res.ok) throw new Error("Steam recent games unavailable.");
+      return steamRecentGamesSchema.parse(await res.json());
+    },
+
+    async getSteamProfile() {
+      const res = await fetch(resolveUrl(baseUrl, "/api/steam/profile"));
+      if (!res.ok) throw new Error("Steam profile unavailable.");
+      return steamPlayerSummarySchema.parse(await res.json());
     },
 
     async searchArchive(input: unknown) {
