@@ -313,7 +313,7 @@ export const mcpToolCatalogItemSchema = z.object({
   readOnlyHint: z.boolean()
 });
 
-export const mcpToolCatalogSchema = z.array(mcpToolCatalogItemSchema).max(16);
+export const mcpToolCatalogSchema = z.array(mcpToolCatalogItemSchema).max(64);
 
 export type McpToolCatalogItem = z.infer<typeof mcpToolCatalogItemSchema>;
 
