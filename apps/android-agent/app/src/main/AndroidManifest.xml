@@ -45,10 +45,17 @@
             </intent-filter>
         </activity>
 
-        <!-- Required by HealthConnect: declare this activity so HC shows app info -->
-        <activity
-            android:name="androidx.health.connect.client.PermissionController"
-            android:exported="true" />
+        <!-- Required by HealthConnect: app appears in HC permission management list -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Device tracking foreground service (from live-dashboard) -->
         <service
