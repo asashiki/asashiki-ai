@@ -213,39 +213,6 @@ export function createCoreApiClient(baseUrl: string) {
       return deviceActivitySummarySchema.parse(await response.json());
     },
 
-    async getDeviceTimeline(date?: string) {
-      const params = date ? `?date=${encodeURIComponent(date)}` : "";
-      const response = await fetch(
-        resolveUrl(baseUrl, `/api/devices/timeline${params}`)
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to load device timeline from Core API.");
-      }
-
-      return deviceTimelineSchema.parse(await response.json());
-    },
-
-    async getHealthRecords(input: unknown) {
-      const query = healthRecordsQueryInputSchema.parse(input ?? {});
-      const params = new URLSearchParams();
-      if (query.type) params.set("type", query.type);
-      if (query.from) params.set("from", query.from);
-      if (query.to) params.set("to", query.to);
-      if (query.deviceId) params.set("deviceId", query.deviceId);
-      if (query.limit) params.set("limit", String(query.limit));
-      const qs = params.toString();
-      const response = await fetch(
-        resolveUrl(baseUrl, `/api/devices/health${qs ? `?${qs}` : ""}`)
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to load health records from Core API.");
-      }
-
-      return healthRecordsQuerySchema.parse(await response.json());
-    },
-
     async writeDiaryEntry(input: unknown) {
       const payload = diaryWriteInputSchema.parse(input);
       const response = await fetch(resolveUrl(baseUrl, "/api/archive/diary"), {
