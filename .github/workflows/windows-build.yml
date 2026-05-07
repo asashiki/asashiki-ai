@@ -1,0 +1,38 @@
+name: Build Windows Agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/windows-agent/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish
+        working-directory: apps/windows-agent
+        run: >
+          dotnet publish WindowsAgent.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: asashiki-windows-agent
+          path: apps/windows-agent/publish/AsashikiWindowsAgent.exe
+          retention-days: 30

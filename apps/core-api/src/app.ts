@@ -3,9 +3,11 @@ import cors from "@fastify/cors";
 import { getOptionalEnvValue, parseServiceEnv } from "@asashiki/config";
 import {
   archiveDiaryReadInputSchema,
+  archiveFileDeleteInputSchema,
   archiveFileListInputSchema,
   archiveFileReadInputSchema,
   archiveFileWriteInputSchema,
+  archiveSearchInputSchema,
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
@@ -649,6 +651,28 @@ export async function createCoreApiApp(options?: {
     } catch (error) {
       reply.code(400);
       return { message: error instanceof Error ? error.message : "List failed." };
+    }
+  });
+
+  // Delete arbitrary archive file
+  server.delete("/api/archive/file", async (request, reply) => {
+    const { path } = archiveFileDeleteInputSchema.parse(request.query);
+    try {
+      return archive.deleteArchiveFile(path);
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : "Delete failed." };
+    }
+  });
+
+  // Full-text search across archive
+  server.get("/api/archive/search", async (request, reply) => {
+    const input = archiveSearchInputSchema.parse(request.query);
+    try {
+      return archive.searchArchive(input.query, input.dir, input.limit);
+    } catch (error) {
+      reply.code(400);
+      return { message: error instanceof Error ? error.message : "Search failed." };
     }
   });
 

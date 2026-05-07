@@ -3,12 +3,16 @@ import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
+  archiveFileDeleteInputSchema,
+  archiveFileDeleteResultSchema,
   archiveFileListInputSchema,
   archiveFileListResultSchema,
   archiveFileReadInputSchema,
   archiveFileResultSchema,
   archiveFileWriteInputSchema,
   archiveFileWriteResultSchema,
+  archiveSearchInputSchema,
+  archiveSearchResultSchema,
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
@@ -60,7 +64,9 @@ const mcpToolIds = [
   "delete_diary_entry",
   "read_archive_file",
   "write_archive_file",
-  "list_archive_files"
+  "delete_archive_file",
+  "list_archive_files",
+  "search_archive"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -205,6 +211,19 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     description:
       "List files and subdirectories within an Archive directory. Call with no arguments to see the top-level structure, or pass dir to drill down.",
     readOnlyHint: true
+  },
+  {
+    id: "delete_archive_file",
+    title: "Delete Archive File",
+    description: "Permanently delete any file in the Archive by relative path.",
+    readOnlyHint: false
+  },
+  {
+    id: "search_archive",
+    title: "Search Archive",
+    description:
+      "Full-text search across all Markdown and text files in the Archive. Optionally scope to a subdirectory (e.g. dir='Obsidian_Asashiki/日记' for diary only). Returns up to 20 matching excerpts.",
+    readOnlyHint: true
   }
 ]);
 
@@ -267,6 +286,12 @@ const writeArchiveFileTool = mcpToolCatalog.find(
 )!;
 const listArchiveFilesTool = mcpToolCatalog.find(
   (tool) => tool.id === "list_archive_files"
+)!;
+const deleteArchiveFileTool = mcpToolCatalog.find(
+  (tool) => tool.id === "delete_archive_file"
+)!;
+const searchArchiveTool = mcpToolCatalog.find(
+  (tool) => tool.id === "search_archive"
 )!;
 
 export function createMcpGatewayServer(client: CoreApiClient) {
@@ -606,6 +631,41 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
+    "delete_archive_file",
+    {
+      title: deleteArchiveFileTool.title,
+      description: deleteArchiveFileTool.description,
+      inputSchema: archiveFileDeleteInputSchema,
+      outputSchema: archiveFileDeleteResultSchema
+    },
+    async (input: z.infer<typeof archiveFileDeleteInputSchema>) => {
+      const output = await client.deleteArchiveFile(input);
+      return {
+        content: [{ type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "search_archive",
+    {
+      title: searchArchiveTool.title,
+      description: searchArchiveTool.description,
+      inputSchema: archiveSearchInputSchema,
+      outputSchema: archiveSearchResultSchema
+    },
+    async (input: z.infer<typeof archiveSearchInputSchema>) => {
+      const output = await client.searchArchive(input);
+      const preview = output.hits.map((h) => `[${h.path}] ${h.excerpt}`).join("\n\n");
+      return {
+        content: [{ type: "text", text: preview || `No results for "${output.query}".` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
     "delete_diary_entry",
     {
       title: deleteDiaryEntryTool.title,
@@ -905,7 +965,17 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
+      case "search_archive": {
+        const output = await client.searchArchive({ query: "日记", limit: 3 });
+        return mcpToolTestResultSchema.parse({
+          toolId, ok: true,
+          summary: `搜索"日记"：${output.total} 条命中。`,
+          preview: output.hits[0]?.excerpt ?? "暂无结果。",
+          executedAt
+        });
+      }
       case "write_archive_file":
+      case "delete_archive_file":
       case "delete_diary_entry":
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,

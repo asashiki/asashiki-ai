@@ -548,6 +548,41 @@ export const diaryDeleteResultSchema = z.object({
 
 export type DiaryDeleteResult = z.infer<typeof diaryDeleteResultSchema>;
 
+export const archiveFileDeleteInputSchema = z.object({
+  path: z.string().min(1).max(500)
+});
+
+export type ArchiveFileDeleteInput = z.infer<typeof archiveFileDeleteInputSchema>;
+
+export const archiveFileDeleteResultSchema = z.object({
+  path: z.string(),
+  deleted: z.boolean()
+});
+
+export type ArchiveFileDeleteResult = z.infer<typeof archiveFileDeleteResultSchema>;
+
+export const archiveSearchInputSchema = z.object({
+  query: z.string().min(1).max(200),
+  dir: z.string().max(500).optional(),
+  limit: z.number().int().positive().max(50).optional()
+});
+
+export type ArchiveSearchInput = z.infer<typeof archiveSearchInputSchema>;
+
+export const archiveSearchHitSchema = z.object({
+  path: z.string(),
+  excerpt: z.string(),
+  modifiedAt: z.string()
+});
+
+export const archiveSearchResultSchema = z.object({
+  query: z.string(),
+  total: z.number(),
+  hits: z.array(archiveSearchHitSchema)
+});
+
+export type ArchiveSearchResult = z.infer<typeof archiveSearchResultSchema>;
+
 export const archiveFileReadInputSchema = z.object({
   path: z.string().min(1).max(500)
 });

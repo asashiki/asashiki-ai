@@ -2,12 +2,16 @@ import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
   archiveDiaryReadInputSchema,
+  archiveFileDeleteInputSchema,
+  archiveFileDeleteResultSchema,
   archiveFileListInputSchema,
   archiveFileListResultSchema,
   archiveFileReadInputSchema,
   archiveFileResultSchema,
   archiveFileWriteInputSchema,
   archiveFileWriteResultSchema,
+  archiveSearchInputSchema,
+  archiveSearchResultSchema,
   archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
@@ -321,6 +325,32 @@ export function createCoreApiClient(baseUrl: string) {
         throw new Error(typeof body.message === "string" ? body.message : "List failed.");
       }
       return archiveFileListResultSchema.parse(await response.json());
+    },
+
+    async deleteArchiveFile(input: unknown) {
+      const { path } = archiveFileDeleteInputSchema.parse(input);
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/archive/file?path=${encodeURIComponent(path)}`),
+        { method: "DELETE" }
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
+      }
+      return archiveFileDeleteResultSchema.parse(await response.json());
+    },
+
+    async searchArchive(input: unknown) {
+      const params = archiveSearchInputSchema.parse(input);
+      const qs = new URLSearchParams({ query: params.query });
+      if (params.dir) qs.set("dir", params.dir);
+      if (params.limit) qs.set("limit", String(params.limit));
+      const response = await fetch(resolveUrl(baseUrl, `/api/archive/search?${qs}`));
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.message === "string" ? body.message : "Search failed.");
+      }
+      return archiveSearchResultSchema.parse(await response.json());
     },
 
     async getDeviceTimeline(input: unknown) {

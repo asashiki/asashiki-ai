@@ -11,9 +11,11 @@ import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
   archiveDiaryEntrySchema,
   archiveDiaryListSchema,
+  archiveFileDeleteResultSchema,
   archiveFileListResultSchema,
   archiveFileResultSchema,
   archiveFileWriteResultSchema,
+  archiveSearchResultSchema,
   archiveStatusSchema,
   connectorSchema,
   diaryDeleteResultSchema,
@@ -464,6 +466,60 @@ export function createArchiveClient(options: {
     });
   }
 
+  function deleteArchiveFile(path: string) {
+    const root = resolveRoot();
+    if (!root) throw new Error("Archive is not available.");
+
+    const target = resolveInside(root, join(root, path));
+    if (!existsSync(target)) {
+      return archiveFileDeleteResultSchema.parse({ path, deleted: false });
+    }
+    const stats = statSync(target);
+    if (stats.isDirectory()) throw new Error("Path is a directory, not a file.");
+
+    rmSync(target);
+    return archiveFileDeleteResultSchema.parse({ path, deleted: true });
+  }
+
+  function searchArchive(query: string, dir?: string, limit = 20) {
+    const root = resolveRoot();
+    if (!root) throw new Error("Archive is not available.");
+
+    const searchRoot = dir ? resolveInside(root, join(root, dir)) : root;
+    if (!existsSync(searchRoot)) throw new Error(`Directory not found: ${dir ?? "/"}`);
+
+    const lowerQuery = query.toLowerCase();
+    const hits: Array<{ path: string; excerpt: string; modifiedAt: string }> = [];
+
+    function walk(current: string) {
+      if (hits.length >= limit) return;
+      let entries: ReturnType<typeof readdirSync>;
+      try { entries = readdirSync(current, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (hits.length >= limit) break;
+        if (entry.name.startsWith(".")) continue;
+        const full = join(current, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!entry.name.endsWith(".md") && !entry.name.endsWith(".txt")) continue;
+        try {
+          const stats = statSync(full);
+          if (stats.size > 512 * 1024) continue;
+          const content = readFileSync(full, { encoding: "utf8" });
+          const idx = content.toLowerCase().indexOf(lowerQuery);
+          if (idx === -1) continue;
+          const start = Math.max(0, idx - 60);
+          const end = Math.min(content.length, idx + query.length + 120);
+          const excerpt = (start > 0 ? "…" : "") + content.slice(start, end).replace(/\n/g, " ") + (end < content.length ? "…" : "");
+          hits.push({ path: relative(root, full), excerpt, modifiedAt: stats.mtime.toISOString() });
+        } catch { continue; }
+      }
+    }
+
+    walk(searchRoot);
+
+    return archiveSearchResultSchema.parse({ query, total: hits.length, hits });
+  }
+
   function resolveRoot() {
     return existsSync(rootPath) ? rootPath : null;
   }
@@ -478,6 +534,8 @@ export function createArchiveClient(options: {
     readArchiveFile,
     writeArchiveFile,
     listArchiveFiles,
+    deleteArchiveFile,
+    searchArchive,
     getConnector
   };
 }
