@@ -82,9 +82,10 @@ object ApiReporter {
         return execute(request)
     }
 
-    fun postHealthBatch(baseUrl: String, token: String, records: List<JSONObject>): Boolean {
-        val normalized = normalizeBaseUrl(baseUrl) ?: return false
-        if (token.isBlank() || records.isEmpty()) return false
+    fun postHealthBatch(baseUrl: String, token: String, records: List<JSONObject>): String? {
+        val normalized = normalizeBaseUrl(baseUrl) ?: return "invalid URL: $baseUrl"
+        if (token.isBlank()) return "token is blank"
+        if (records.isEmpty()) return "no records"
 
         val arr = org.json.JSONArray()
         records.forEach { arr.put(it) }
@@ -97,7 +98,7 @@ object ApiReporter {
             .post(body.toString().toRequestBody(jsonMediaType))
             .build()
 
-        return execute(request)
+        return executeWithDetail(request) // null = success, non-null = error detail
     }
 
     private fun execute(request: Request): Boolean {
@@ -109,6 +110,18 @@ object ApiReporter {
         } catch (e: Exception) {
             Log.w(TAG, "Request error: ${e.message}")
             false
+        }
+    }
+
+    private fun executeWithDetail(request: Request): String? {
+        return try {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string()?.take(300) ?: ""
+                if (response.isSuccessful) null
+                else "HTTP ${response.code}: $body"
+            }
+        } catch (e: Exception) {
+            "error: ${e.message}"
         }
     }
 

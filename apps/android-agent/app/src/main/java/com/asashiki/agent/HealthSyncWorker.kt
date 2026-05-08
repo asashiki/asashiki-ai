@@ -48,14 +48,14 @@ class HealthSyncWorker(
                 return Result.success()
             }
 
-            val ok = ApiReporter.postHealthBatch(baseUrl, token, records)
-            if (ok) {
+            val err = ApiReporter.postHealthBatch(baseUrl, token, records)
+            if (err == null) {
                 Log.i(TAG, "HC sync OK: ${records.size} records")
                 store.appendLog("HC: 上传 ${records.size} 条记录")
                 Result.success()
             } else {
-                Log.w(TAG, "HC sync failed")
-                store.appendLog("HC: 上传失败")
+                Log.w(TAG, "HC sync failed: $err")
+                store.appendLog("HC: 上传失败 $err")
                 Result.retry()
             }
         } catch (e: Exception) {
