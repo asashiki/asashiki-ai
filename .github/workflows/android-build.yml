@@ -46,33 +46,24 @@ jobs:
               apps/android-agent/app/src/main/res/mipmap-${dpi}/ic_launcher.png
           done
 
-      - name: Prepare signing keystore
+      - name: Build APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > apps/android-agent/release.jks
-            echo "HAS_SIGNING=true" >> $GITHUB_ENV
-            echo "KEYSTORE_PATH=$(pwd)/apps/android-agent/release.jks" >> $GITHUB_ENV
-            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
-            echo "KEY_ALIAS=$KEY_ALIAS" >> $GITHUB_ENV
-            echo "KEY_PASSWORD=$KEY_PASSWORD" >> $GITHUB_ENV
-          else
-            echo "HAS_SIGNING=false" >> $GITHUB_ENV
-          fi
-
-      - name: Build APK
+          KS_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         working-directory: apps/android-agent
         run: |
-          if [ "$HAS_SIGNING" = "true" ]; then
-            gradle assembleRelease --no-daemon -PversionCode=${{ github.run_number }} \
-              -PkeystorePath="$KEYSTORE_PATH" \
-              -PkeystorePassword="$KEYSTORE_PASSWORD" \
-              -PkeyAlias="$KEY_ALIAS" \
-              -PkeyPassword="$KEY_PASSWORD"
+          if [ -n "$KEYSTORE_B64" ]; then
+            printf '%s' "$KEYSTORE_B64" | base64 -d > release.jks
+            echo "Verifying keystore..."
+            keytool -list -keystore release.jks -storepass "$KS_PASSWORD" -alias "$KS_ALIAS" -v 2>&1 | grep -E "Alias|Error|Exception|type:" || true
+            gradle assembleRelease --no-daemon \
+              -PversionCode=${{ github.run_number }} \
+              -PkeystorePath="$(pwd)/release.jks" \
+              -PkeystorePassword="$KS_PASSWORD" \
+              -PkeyAlias="$KS_ALIAS" \
+              -PkeyPassword="$KS_KEY_PASSWORD"
           else
             gradle assembleDebug --no-daemon -PversionCode=${{ github.run_number }}
           fi
