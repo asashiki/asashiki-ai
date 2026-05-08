@@ -854,6 +854,149 @@ export async function createCoreApiApp(options?: {
   server.get("/public/status", async () => repository.getPublicStatus());
   server.get("/public/widget-config", async () => repository.getPublicWidgetConfig());
 
+  // ── Admin: SQLite backup ────────────────────────────────────────────────
+  server.post("/api/admin/backup-db", async (request, reply) => {
+    const password = getBasicPassword(request.headers.authorization);
+    if (env.ADMIN_PANEL_TOKEN && password !== env.ADMIN_PANEL_TOKEN) {
+      reply.code(401); return { error: "Unauthorized" };
+    }
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const archiveRoot = env.ASASHIKI_ARCHIVE_ROOT ?? "/archive";
+      const backupDir = path.join(archiveRoot, "备份", "db");
+      fs.mkdirSync(backupDir, { recursive: true });
+      const date = new Date().toISOString().slice(0, 10);
+      const dest = path.join(backupDir, `core-api-${date}.sqlite`);
+      // VACUUM INTO creates a clean compacted copy without locking the live db
+      database.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`);
+      const size = fs.statSync(dest).size;
+      return { ok: true, path: dest, sizeBytes: size, backedUpAt: new Date().toISOString() };
+    } catch (e) {
+      reply.code(500);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  // ── Admin: Daily Markdown digest ────────────────────────────────────────
+  server.post("/api/admin/daily-digest", async (request, reply) => {
+    const password = getBasicPassword(request.headers.authorization);
+    if (env.ADMIN_PANEL_TOKEN && password !== env.ADMIN_PANEL_TOKEN) {
+      reply.code(401); return { error: "Unauthorized" };
+    }
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+
+      const rawDate = (request.query as Record<string, string>).date;
+      const date = rawDate ?? new Date().toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0, 10);
+
+      const actSummary = repository.getDeviceActivitySummary(date);
+      const timeline = repository.getDeviceTimeline(date);
+      const healthRecords = repository.getHealthRecords({ limit: 200 });
+      const locationHistory = repository.getLocationHistory({ limit: 200 });
+
+      // Filter health records to the date
+      const dayHealthRecords = healthRecords.records.filter(r => r.recordedAt.startsWith(date));
+      const dayLocationPoints = locationHistory.points.filter(p => p.recordedAt.startsWith(date));
+
+      function fmtDur(s: number) {
+        const m = Math.round(s / 60);
+        return m >= 60 ? `${Math.floor(m/60)}h${m%60}m` : `${m}分钟`;
+      }
+
+      const APP_NAMES: Record<string, string> = {
+        "com.anthropic.claude": "Claude", "com.openai.chatgpt": "ChatGPT",
+        "com.twitter.android": "Twitter", "com.tencent.mobileqq": "QQ",
+        "com.tencent.mm": "微信", "tv.danmaku.bili": "哔哩哔哩",
+        "com.bilibili.app.blue": "哔哩哔哩", "com.google.android.youtube": "YouTube",
+        "com.zhihu.android": "知乎", "com.ss.android.ugc.aweme": "抖音",
+        "com.netease.cloudmusic": "网易云音乐", "com.spotify.music": "Spotify",
+        "com.notion.id": "Notion", "md.obsidian": "Obsidian",
+        "com.github.android": "GitHub", "com.miui.home": "桌面",
+        "com.android.settings": "设置",
+      };
+      const appName = (id: string) => APP_NAMES[id] ?? id.split(".").pop() ?? id;
+
+      // App usage section
+      const appLines = actSummary.perApp.slice(0, 15).map(a =>
+        `| ${appName(a.appId)} | ${fmtDur(a.totalSeconds)} | ${a.count}次 |`
+      ).join("\n");
+
+      // Health section
+      const hrRecords = dayHealthRecords.filter(r => r.type === "heart_rate" && r.value);
+      const hrVals = hrRecords.map(r => r.value!);
+      const hrLine = hrVals.length > 0
+        ? `- 心率：${Math.min(...hrVals).toFixed(0)}–${Math.max(...hrVals).toFixed(0)} bpm（${hrVals.length} 条记录）`
+        : "";
+      const stepsTotal = dayHealthRecords.filter(r => r.type === "steps").reduce((s, r) => s + (r.value ?? 0), 0);
+      const stepsLine = stepsTotal > 0 ? `- 步数：${stepsTotal.toFixed(0)} 步` : "";
+      const spo2Records = dayHealthRecords.filter(r => r.type === "oxygen_saturation" && r.value);
+      const spo2Vals = spo2Records.map(r => r.value!);
+      const spo2Line = spo2Vals.length > 0
+        ? `- 血氧：${Math.min(...spo2Vals).toFixed(0)}–${Math.max(...spo2Vals).toFixed(0)}%（${spo2Vals.length} 条）`
+        : "";
+      const sleepMins = dayHealthRecords.filter(r => r.type === "sleep").reduce((s, r) => s + (r.value ?? 0), 0);
+      const sleepLine = sleepMins > 0 ? `- 睡眠：${(sleepMins / 60).toFixed(1)} 小时` : "";
+      const healthSection = [hrLine, stepsLine, spo2Line, sleepLine].filter(Boolean).join("\n") || "- 暂无数据";
+
+      // Location section
+      const locLine = dayLocationPoints.length > 0
+        ? `- 记录 ${dayLocationPoints.length} 个位置点\n- 最后位置：${dayLocationPoints[0].lat.toFixed(4)}°N ${dayLocationPoints[0].lon.toFixed(4)}°E（精度 ${(dayLocationPoints[0].accuracyM ?? 0).toFixed(0)}m）`
+        : "- 暂无位置记录";
+
+      // Timeline section (last 20 activities)
+      const tlLines = timeline.activities.slice(-20).reverse().map(a => {
+        const t = new Date(a.startedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
+        const dur = a.durationSeconds ? ` · ${fmtDur(a.durationSeconds)}` : " · 进行中";
+        return `- ${t} ${appName(a.appId)}${dur}`;
+      }).join("\n") || "- 暂无数据";
+
+      const totalScreenMins = Math.round(actSummary.totalSeconds / 60);
+
+      const markdown = `---
+date: ${date}
+type: data-digest
+tags: [数据日志]
+---
+
+# ${date} 数据日志
+
+## 应用使用（屏幕时间 ${totalScreenMins} 分钟）
+
+| 应用 | 时长 | 次数 |
+|------|------|------|
+${appLines || "| 暂无数据 | — | — |"}
+
+## 健康数据
+
+${healthSection}
+
+## 位置记录
+
+${locLine}
+
+## 活动时间线（最近 20 条）
+
+${tlLines}
+
+---
+*由 Core API 自动生成于 ${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}*
+`;
+
+      const archiveRoot = env.ASASHIKI_ARCHIVE_ROOT ?? "/archive";
+      const digestDir = path.join(archiveRoot, "Obsidian_Asashiki", "数据日志");
+      fs.mkdirSync(digestDir, { recursive: true });
+      const destFile = path.join(digestDir, `${date}.md`);
+      fs.writeFileSync(destFile, markdown, "utf-8");
+
+      return { ok: true, date, path: destFile, writtenAt: new Date().toISOString() };
+    } catch (e) {
+      reply.code(500);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
   return {
     env,
     databasePath,
