@@ -285,18 +285,43 @@ export function createRepository(database: DatabaseSync) {
     },
 
     getHealthSummary() {
-      const row = database.prepare(`
+      const snapshot = database.prepare(`
         SELECT captured_at, resting_heart_rate, sleep_hours, step_count
         FROM health_snapshots
         ORDER BY datetime(captured_at) DESC
         LIMIT 1
       `).get() as JsonRow | undefined;
 
+      // Pull latest values from device_health_records (HealthConnect uploads)
+      const hrRow = database.prepare(`
+        SELECT value, recorded_at FROM device_health_records
+        WHERE type IN ('resting_heart_rate', 'heart_rate') AND value IS NOT NULL
+        ORDER BY datetime(recorded_at) DESC LIMIT 1
+      `).get() as JsonRow | undefined;
+
+      const sleepRow = database.prepare(`
+        SELECT SUM(value) as total, MAX(recorded_at) as recorded_at FROM device_health_records
+        WHERE type = 'sleep' AND value IS NOT NULL
+          AND date(recorded_at) = date('now', 'localtime')
+      `).get() as JsonRow | undefined;
+
+      const stepsRow = database.prepare(`
+        SELECT SUM(value) as total, MAX(recorded_at) as recorded_at FROM device_health_records
+        WHERE type = 'steps' AND value IS NOT NULL
+          AND date(recorded_at) = date('now', 'localtime')
+      `).get() as JsonRow | undefined;
+
+      // Prefer live records over manual snapshots when available
+      const restingHeartRate = hrRow?.value ?? snapshot?.resting_heart_rate ?? null;
+      const sleepHours = sleepRow?.total ? Number((Number(sleepRow.total) / 60).toFixed(1)) : (snapshot?.sleep_hours ?? null);
+      const stepCount = stepsRow?.total ? Number(stepsRow.total) : (snapshot?.step_count ?? null);
+      const capturedAt = hrRow?.recorded_at ?? stepsRow?.recorded_at ?? snapshot?.captured_at ?? new Date(0).toISOString();
+
       return healthSummarySchema.parse({
-        restingHeartRate: row?.resting_heart_rate ?? null,
-        sleepHours: row?.sleep_hours ?? null,
-        stepCount: row?.step_count ?? null,
-        capturedAt: row?.captured_at ?? new Date(0).toISOString()
+        restingHeartRate,
+        sleepHours,
+        stepCount,
+        capturedAt
       });
     },
 
