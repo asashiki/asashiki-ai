@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
-import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -215,10 +214,10 @@ class TrackingService : Service() {
 
     private fun scheduleWatchdog(delayMs: Long = DEFAULT_WATCHDOG_DELAY_MS) {
         val alarmManager = getSystemService(AlarmManager::class.java)
-        val triggerAt = SystemClock.elapsedRealtime() + delayMs
-        alarmManager.setAndAllowWhileIdle(
-            AlarmManager.ELAPSED_REALTIME_WAKEUP,
-            triggerAt,
+        val triggerAt = System.currentTimeMillis() + delayMs
+        // setAlarmClock bypasses Doze and MIUI/HyperOS battery restrictions
+        alarmManager.setAlarmClock(
+            AlarmManager.AlarmClockInfo(triggerAt, null),
             createWatchdogIntent(),
         )
     }

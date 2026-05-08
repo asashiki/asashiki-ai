@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import android.net.Uri
@@ -130,6 +131,12 @@ class MainActivity : ComponentActivity() {
                         },
                         onRequestBackgroundLocation = {
                             bgLocationPermLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                        },
+                        isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
+                        onRequestBatteryOptimizationIgnore = {
+                            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                            })
                         }
                     )
                 }
@@ -160,6 +167,8 @@ fun AgentScreen(
     onRefreshHcState: () -> Unit,
     onRequestForegroundLocation: () -> Unit = {},
     onRequestBackgroundLocation: () -> Unit = {},
+    isBatteryOptimizationIgnored: Boolean = false,
+    onRequestBatteryOptimizationIgnore: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -170,6 +179,7 @@ fun AgentScreen(
     var hasUsagePerm by remember { mutableStateOf(false) }
     var hasForegroundLocation by remember { mutableStateOf(false) }
     var hasBackgroundLocation by remember { mutableStateOf(false) }
+    var isBatteryOptimizationIgnored by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -182,6 +192,8 @@ fun AgentScreen(
             hasBackgroundLocation = ContextCompat.checkSelfPermission(
                 context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
+            val pm = context.getSystemService(PowerManager::class.java)
+            isBatteryOptimizationIgnored = pm.isIgnoringBatteryOptimizations(context.packageName)
             onRefreshHcState()
             delay(3_000)
         }
@@ -273,6 +285,18 @@ fun AgentScreen(
             ) {
                 Text("授予「使用情况访问」权限")
             }
+        }
+
+        if (!isBatteryOptimizationIgnored) {
+            Button(
+                onClick = onRequestBatteryOptimizationIgnore,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("加入电池优化白名单（防止后台被杀）")
+            }
+        } else {
+            Text("✓ 已加入电池优化白名单", color = Color(0xFF388E3C), fontSize = 13.sp)
         }
 
         Row(
