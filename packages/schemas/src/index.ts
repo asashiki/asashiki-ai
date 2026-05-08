@@ -547,7 +547,7 @@ export const okxHoldingSchema = z.object({
   balance: z.number(),
   available: z.number(),
   frozen: z.number(),
-  valueUsd: z.number()
+  valueUsd: z.number().nullable()
 });
 
 export const okxAccountBalanceSchema = z.object({

@@ -61,9 +61,9 @@ export function createOkxConnector(config: OkxConfig) {
           balance: Number(d.eq),
           available: Number(d.availEq),
           frozen: Number(d.frozenBal),
-          valueUsd: Number(d.usdEq)
+          valueUsd: d.usdEq != null && d.usdEq !== "" ? Number(d.usdEq) : null
         }))
-        .sort((a, b) => b.valueUsd - a.valueUsd)
+        .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0))
     };
   }
 
