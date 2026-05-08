@@ -292,21 +292,21 @@ export function createRepository(database: DatabaseSync) {
         LIMIT 1
       `).get() as JsonRow | undefined;
 
-      // Pull latest values from device_health_records (HealthConnect uploads)
+      // Pull latest values from health_records (HealthConnect uploads)
       const hrRow = database.prepare(`
-        SELECT value, recorded_at FROM device_health_records
+        SELECT value, recorded_at FROM health_records
         WHERE type IN ('resting_heart_rate', 'heart_rate') AND value IS NOT NULL
         ORDER BY datetime(recorded_at) DESC LIMIT 1
       `).get() as JsonRow | undefined;
 
       const sleepRow = database.prepare(`
-        SELECT SUM(value) as total, MAX(recorded_at) as recorded_at FROM device_health_records
+        SELECT SUM(value) as total, MAX(recorded_at) as recorded_at FROM health_records
         WHERE type = 'sleep' AND value IS NOT NULL
           AND date(recorded_at) = date('now', 'localtime')
       `).get() as JsonRow | undefined;
 
       const stepsRow = database.prepare(`
-        SELECT SUM(value) as total, MAX(recorded_at) as recorded_at FROM device_health_records
+        SELECT SUM(value) as total, MAX(recorded_at) as recorded_at FROM health_records
         WHERE type = 'steps' AND value IS NOT NULL
           AND date(recorded_at) = date('now', 'localtime')
       `).get() as JsonRow | undefined;
