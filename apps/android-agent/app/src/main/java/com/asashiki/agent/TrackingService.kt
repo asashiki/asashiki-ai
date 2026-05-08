@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -80,10 +81,14 @@ class TrackingService : Service() {
     private fun startTrackingIfNeeded() {
         if (trackingJob?.isActive == true) return
 
-        startForeground(
-            NOTIFICATION_ID,
-            buildNotification("正在准备监听")
-        )
+        // Explicitly specify dataSync type so the service starts even without location permission.
+        // Location type is only used by LocationTracker internally when permission is granted.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, buildNotification("正在准备监听"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification("正在准备监听"))
+        }
         scheduleWatchdog()
 
         trackingJob = serviceScope.launch {

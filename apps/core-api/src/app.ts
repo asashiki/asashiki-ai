@@ -695,7 +695,11 @@ export async function createCoreApiApp(options?: {
 
   // Health records detailed query (expose existing repository method)
   server.get("/api/devices/health-records", async (request) => {
-    const input = healthRecordsQueryInputSchema.parse(request.query);
+    const raw = request.query as Record<string, string>;
+    const input = healthRecordsQueryInputSchema.parse({
+      ...raw,
+      limit: raw.limit !== undefined ? Number(raw.limit) : undefined
+    });
     return repository.getHealthRecords(input);
   });
 
