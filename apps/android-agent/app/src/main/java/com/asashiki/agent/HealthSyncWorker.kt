@@ -48,16 +48,20 @@ class HealthSyncWorker(
                 return Result.success()
             }
 
-            val err = ApiReporter.postHealthBatch(baseUrl, token, records)
-            if (err == null) {
-                Log.i(TAG, "HC sync OK: ${records.size} records")
-                store.appendLog("HC: 上传 ${records.size} 条记录")
-                Result.success()
-            } else {
-                Log.w(TAG, "HC sync failed: $err")
-                store.appendLog("HC: 上传失败 $err")
-                Result.retry()
+            val batches = records.chunked(BATCH_SIZE)
+            var uploaded = 0
+            for (batch in batches) {
+                val err = ApiReporter.postHealthBatch(baseUrl, token, batch)
+                if (err != null) {
+                    Log.w(TAG, "HC sync failed: $err")
+                    store.appendLog("HC: 上传失败 $err")
+                    return Result.retry()
+                }
+                uploaded += batch.size
             }
+            Log.i(TAG, "HC sync OK: $uploaded records")
+            store.appendLog("HC: 上传 $uploaded 条记录")
+            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "HC sync error: ${e.message}", e)
             store.appendLog("HC: 错误 ${e.javaClass.simpleName}")
@@ -145,5 +149,6 @@ class HealthSyncWorker(
 
     companion object {
         private const val TAG = "HealthSyncWorker"
+        private const val BATCH_SIZE = 400
     }
 }
