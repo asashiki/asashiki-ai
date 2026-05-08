@@ -132,7 +132,6 @@ class MainActivity : ComponentActivity() {
                         onRequestBackgroundLocation = {
                             bgLocationPermLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                         },
-                        isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
                         onRequestBatteryOptimizationIgnore = {
                             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                                 data = Uri.parse("package:$packageName")
@@ -167,7 +166,6 @@ fun AgentScreen(
     onRefreshHcState: () -> Unit,
     onRequestForegroundLocation: () -> Unit = {},
     onRequestBackgroundLocation: () -> Unit = {},
-    isBatteryOptimizationIgnored: Boolean = false,
     onRequestBatteryOptimizationIgnore: () -> Unit = {},
 ) {
     val context = LocalContext.current
