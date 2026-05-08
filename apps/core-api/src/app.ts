@@ -688,7 +688,11 @@ export async function createCoreApiApp(options?: {
 
   // Device timeline (expose existing repository method)
   server.get("/api/devices/timeline-query", async (request) => {
-    const input = deviceTimelineInputSchema.parse(request.query);
+    const raw = request.query as Record<string, string>;
+    const input = deviceTimelineInputSchema.parse({
+      ...raw,
+      limit: raw.limit !== undefined ? Number(raw.limit) : undefined
+    });
     const date = input.date ?? new Date().toISOString().slice(0, 10);
     return repository.getDeviceTimeline(date);
   });
@@ -740,7 +744,11 @@ export async function createCoreApiApp(options?: {
   );
 
   server.get("/api/devices/location/history", async (request) => {
-    const input = locationHistoryQueryInputSchema.parse(request.query);
+    const raw = request.query as Record<string, string>;
+    const input = locationHistoryQueryInputSchema.parse({
+      ...raw,
+      limit: raw.limit !== undefined ? Number(raw.limit) : undefined
+    });
     return repository.getLocationHistory(input);
   });
 
