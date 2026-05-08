@@ -194,135 +194,201 @@ export async function createCoreApiApp(options?: {
   server.get("/console", async (request, reply) => {
     if (env.ADMIN_PANEL_TOKEN) {
       const password = getBasicPassword(request.headers.authorization);
-
       if (password !== env.ADMIN_PANEL_TOKEN) {
-        reply
-          .code(401)
-          .header("WWW-Authenticate", 'Basic realm="Asashiki Console"');
+        reply.code(401).header("WWW-Authenticate", 'Basic realm="Asashiki Console"');
         return "Authentication required.";
       }
     }
 
-    const [profile, connectorSummary, archiveStatus, remoteServers, deviceCurrent, recentHealth] =
-      await Promise.all([
-        Promise.resolve(repository.getProfileSummary()),
-        Promise.resolve(repository.getConnectorSummary()),
-        Promise.resolve(archive.getStatus()),
-        remoteMcpRegistry.listServers(),
-        Promise.resolve(repository.getDeviceCurrent()),
-        Promise.resolve(repository.getHealthRecords({ limit: 10 }))
-      ]);
-    const svcHealth = createServiceHealth(manifest, env.NODE_ENV, startedAt);
-    const today = new Date().toISOString().slice(0, 10);
+    // ── App name + activity description mapping ─────────────────────────────
+    const APP_LABELS: Record<string, { name: string; desc: string }> = {
+      "com.anthropic.claude":              { name: "Claude",       desc: "正在和 Claude 聊天~" },
+      "com.openai.chatgpt":               { name: "ChatGPT",      desc: "正在和 ChatGPT 聊天~" },
+      "com.google.android.apps.bard":     { name: "Gemini",       desc: "正在和 Gemini 聊天~" },
+      "com.twitter.android":              { name: "Twitter / X",  desc: "正在刷 Twitter~" },
+      "com.tencent.mobileqq":            { name: "QQ",           desc: "正在和朋友聊 QQ~" },
+      "com.tencent.mm":                  { name: "微信",          desc: "正在刷微信~" },
+      "tv.danmaku.bili":                 { name: "哔哩哔哩",      desc: "正在刷 B站~" },
+      "com.bilibili.app.blue":           { name: "哔哩哔哩",      desc: "正在刷 B站~" },
+      "com.google.android.youtube":      { name: "YouTube",      desc: "正在看 YouTube~" },
+      "com.zhihu.android":               { name: "知乎",          desc: "正在看知乎~" },
+      "com.weibo.android":               { name: "微博",          desc: "正在刷微博~" },
+      "com.ss.android.ugc.aweme":        { name: "抖音",          desc: "正在刷抖音~" },
+      "com.instagram.android":           { name: "Instagram",    desc: "正在刷 INS~" },
+      "com.discord":                     { name: "Discord",      desc: "正在摸鱼 Discord~" },
+      "com.telegram.messenger":          { name: "Telegram",     desc: "正在看 Telegram~" },
+      "org.telegram.messenger":          { name: "Telegram",     desc: "正在看 Telegram~" },
+      "com.whatsapp":                    { name: "WhatsApp",     desc: "正在聊 WhatsApp~" },
+      "com.netease.cloudmusic":          { name: "网易云音乐",    desc: "正在听网易云~" },
+      "com.kugou.android":               { name: "酷狗音乐",      desc: "正在听酷狗~" },
+      "com.tencent.qqmusic":             { name: "QQ音乐",        desc: "正在听 QQ音乐~" },
+      "com.spotify.music":               { name: "Spotify",      desc: "正在听 Spotify~" },
+      "com.netflix.mediaclient":         { name: "Netflix",      desc: "正在看 Netflix~" },
+      "com.notion.id":                   { name: "Notion",       desc: "正在整理 Notion~" },
+      "md.obsidian":                     { name: "Obsidian",     desc: "正在记笔记~" },
+      "com.github.android":             { name: "GitHub",       desc: "正在逛 GitHub~" },
+      "com.microsoft.outlook":           { name: "Outlook",      desc: "正在处理邮件~" },
+      "com.google.android.gm":          { name: "Gmail",        desc: "正在看邮件~" },
+      "com.autonavi.minimap":           { name: "高德地图",      desc: "正在导航~" },
+      "com.baidu.BaiduMap":             { name: "百度地图",      desc: "正在导航~" },
+      "com.google.android.apps.maps":   { name: "Google Maps",  desc: "正在导航~" },
+      "com.miHoYo.GenshinImpact":       { name: "原神",          desc: "正在打原神~" },
+      "com.miHoYo.bh3oversea":         { name: "崩坏3",         desc: "正在打崩3~" },
+      "com.HoYoverse.hkrpgoversea":    { name: "星穹铁道",      desc: "正在开星铁~" },
+      "com.android.settings":           { name: "系统设置",      desc: "正在改设置~" },
+      "com.miui.home":                  { name: "桌面",          desc: "在桌面发呆~" },
+      "com.android.camera2":            { name: "相机",          desc: "正在拍照~" },
+    };
+
+    function appLabel(appId: string | null | undefined): { name: string; desc: string } {
+      if (!appId) return { name: "未知", desc: "发呆中~" };
+      return APP_LABELS[appId] ?? { name: appId.split(".").pop() ?? appId, desc: `正在用 ${appId.split(".").pop() ?? appId}~` };
+    }
+
+    function fmtTime(iso: string): string {
+      return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
+    }
+    function fmtDuration(s: number | null): string {
+      if (!s || s < 60) return `${s ?? 0}秒`;
+      const m = Math.round(s / 60);
+      return m >= 60 ? `${Math.floor(m / 60)}h${m % 60}m` : `${m}分钟`;
+    }
+
+    // ── Fetch all data ──────────────────────────────────────────────────────
+    const [archiveStatus, remoteServers, deviceCurrent, recentHealth] = await Promise.all([
+      Promise.resolve(archive.getStatus()),
+      remoteMcpRegistry.listServers(),
+      Promise.resolve(repository.getDeviceCurrent()),
+      Promise.resolve(repository.getHealthRecords({ limit: 6 }))
+    ]);
+
+    const today = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0, 10);
     const activitySummary = repository.getDeviceActivitySummary(today);
+    const timeline = repository.getDeviceTimeline(today);
+    const locationData = repository.getLocationCurrent();
+    const svcHealth = createServiceHealth(manifest, env.NODE_ENV, startedAt);
 
-    function deviceRows() {
-      if (deviceCurrent.devices.length === 0) {
-        return `<tr><td colspan="2" class="muted">暂无设备上报记录。</td></tr>`;
-      }
-      return deviceCurrent.devices.map((d) => {
-        const statusClass = d.isOnline ? "ok" : "muted";
-        const extra = d.extra ? ` · ${escapeHtml(JSON.stringify(d.extra))}` : "";
-        return `<tr><th>${escapeHtml(d.deviceName)} <span class="muted">(${escapeHtml(d.platform)})</span></th><td class="${statusClass}">${d.isOnline ? "online" : "offline"} · ${escapeHtml(d.appId ?? "—")}${escapeHtml(d.windowTitle ? ` / ${d.windowTitle}` : "")}${extra} <span class="muted">${escapeHtml(d.lastSeenAt)}</span></td></tr>`;
+    let weatherLine = "";
+    try {
+      const loc = locationData.devices[0];
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+      const wConfig = loc && loc.recordedAt > twoHoursAgo
+        ? { ...weatherConfig, latitude: loc.lat, longitude: loc.lon, locationName: "当前位置" }
+        : weatherConfig;
+      const w = await fetchWeather(wConfig);
+      weatherLine = `${escapeHtml(w.location)} ${escapeHtml(w.current.description)} ${w.current.temperatureC}°C 湿度${w.current.humidity}%`;
+    } catch { weatherLine = "天气获取失败"; }
+
+    // ── Live status block ───────────────────────────────────────────────────
+    function liveStatus(): string {
+      const d = deviceCurrent.devices[0];
+      if (!d) return `<p class="muted">暂无设备在线。</p>`;
+      const label = appLabel(d.appId);
+      const music = (d.extra as any)?.music;
+      const musicLine = music?.title ? ` ♪ ${escapeHtml(music.title)}${music.artist ? ` - ${escapeHtml(music.artist)}` : ""}` : "";
+      const bat = (d.extra as any)?.battery_percent;
+      const charging = (d.extra as any)?.battery_charging;
+      const net = (d.extra as any)?.network_type;
+      const onlineClass = d.isOnline ? "ok" : "muted";
+      const seenAgo = Math.round((Date.now() - new Date(d.lastSeenAt).getTime()) / 1000);
+      const seenStr = seenAgo < 120 ? `${seenAgo}秒前` : `${Math.round(seenAgo / 60)}分钟前`;
+      return `
+        <table>
+          <tr><th>设备</th><td class="${onlineClass}">${escapeHtml(d.deviceName)} · ${d.isOnline ? "在线" : "离线"} · ${escapeHtml(seenStr)}</td></tr>
+          <tr><th>正在做</th><td><strong>${escapeHtml(label.desc)}</strong>${escapeHtml(musicLine)}</td></tr>
+          <tr><th>应用</th><td>${escapeHtml(label.name)} <span class="muted">${escapeHtml(d.appId ?? "")}</span></td></tr>
+          ${bat != null ? `<tr><th>电量</th><td>${escapeHtml(String(bat))}%${charging ? " ⚡充电中" : ""} · ${escapeHtml(net ?? "")}</td></tr>` : ""}
+          <tr><th>天气</th><td>${escapeHtml(weatherLine)}</td></tr>
+        </table>`;
+    }
+
+    // ── Timeline ────────────────────────────────────────────────────────────
+    function timelineRows(): string {
+      const acts = timeline.activities.slice(-30).reverse();
+      if (acts.length === 0) return `<tr><td class="muted">今日暂无活动记录。</td></tr>`;
+      return acts.map((a) => {
+        const label = appLabel(a.appId);
+        const dur = a.durationSeconds ? ` · ${escapeHtml(fmtDuration(a.durationSeconds))}` : " · 进行中";
+        return `<tr><td>${escapeHtml(fmtTime(a.startedAt))} <strong>${escapeHtml(label.name)}</strong>${escapeHtml(dur)}</td></tr>`;
       }).join("\n        ");
     }
 
-    function activityRows() {
-      if (activitySummary.perApp.length === 0) {
-        return `<tr><td colspan="2" class="muted">今日暂无活动记录。</td></tr>`;
-      }
-      return activitySummary.perApp.slice(0, 10).map((a) => {
-        const mins = Math.round(a.totalSeconds / 60);
-        return `<tr><th>${escapeHtml(a.appId)}</th><td>${escapeHtml(String(mins))} 分钟 · ${escapeHtml(String(a.count))} 次</td></tr>`;
+    // ── Activity summary ────────────────────────────────────────────────────
+    function activityRows(): string {
+      if (activitySummary.perApp.length === 0) return `<tr><td colspan="2" class="muted">今日暂无数据。</td></tr>`;
+      return activitySummary.perApp.slice(0, 12).map((a) => {
+        const label = appLabel(a.appId);
+        return `<tr><th>${escapeHtml(label.name)}</th><td>${escapeHtml(fmtDuration(a.totalSeconds))} · ${escapeHtml(String(a.count))}次 <span class="muted">${escapeHtml(a.appId)}</span></td></tr>`;
       }).join("\n        ");
     }
 
-    function healthRows() {
-      if (recentHealth.records.length === 0) {
-        return `<tr><td colspan="2" class="muted">暂无健康数据上报记录。</td></tr>`;
-      }
+    // ── Health ──────────────────────────────────────────────────────────────
+    function healthRows(): string {
+      if (recentHealth.records.length === 0) return `<tr><td colspan="2" class="muted">暂无数据。</td></tr>`;
       return recentHealth.records.map((r) => {
-        const val = r.valueJson
-          ? escapeHtml(JSON.stringify(r.valueJson))
-          : `${escapeHtml(String(r.value ?? "—"))}${r.unit ? " " + escapeHtml(r.unit) : ""}`;
-        return `<tr><th>${escapeHtml(r.type)}</th><td>${val} <span class="muted">${escapeHtml(r.recordedAt)} · ${escapeHtml(r.deviceId)}</span></td></tr>`;
+        const val = r.valueJson ? escapeHtml(JSON.stringify(r.valueJson)) : `${escapeHtml(String(r.value ?? "—"))}${r.unit ? " " + escapeHtml(r.unit) : ""}`;
+        return `<tr><th>${escapeHtml(r.type)}</th><td>${val} <span class="muted">${escapeHtml(fmtTime(r.recordedAt))}</span></td></tr>`;
       }).join("\n        ");
     }
+
+    const updatedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 
     const html = `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Asashiki MCP Console</title>
+    <title>Asashiki Console</title>
     <style>
-      body { margin: 0; font: 15px/1.7 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #222; background: #f7f7f4; }
-      main { max-width: 920px; margin: 0 auto; padding: 32px 20px 56px; }
-      h1 { font-size: 24px; margin: 0 0 4px; }
-      h2 { font-size: 16px; margin: 28px 0 8px; }
-      p { margin: 0 0 10px; color: #555; }
-      code { background: #ecebe6; padding: 2px 5px; border-radius: 4px; }
-      table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e3e0d8; }
-      th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #eeeae2; vertical-align: top; }
-      th { width: 220px; color: #5b5b51; font-weight: 600; background: #fbfaf7; }
+      body { margin: 0; font: 15px/1.7 ui-monospace, "Cascadia Code", "Fira Code", monospace; color: #222; background: #f7f7f4; }
+      main { max-width: 800px; margin: 0 auto; padding: 28px 18px 56px; }
+      h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -0.5px; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin: 28px 0 6px; border-bottom: 1px solid #e0ddd5; padding-bottom: 4px; }
+      p { margin: 0 0 8px; color: #555; font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eeeae2; vertical-align: top; font-size: 14px; }
+      th { width: 130px; color: #777; font-weight: normal; }
+      td strong { color: #111; }
       .ok { color: #23724d; }
       .warn { color: #9a6a14; }
       .bad { color: #a13a31; }
-      .muted { color: #777; }
+      .muted { color: #aaa; font-size: 12px; }
+      .live-desc { font-size: 18px; font-weight: 600; color: #111; padding: 14px 10px 6px; }
     </style>
+    <script>
+      let countdown = 30;
+      function tick() {
+        const el = document.getElementById("cd");
+        if (el) el.textContent = countdown + "s";
+        if (--countdown <= 0) location.reload();
+        else setTimeout(tick, 1000);
+      }
+      window.onload = tick;
+    </script>
   </head>
   <body>
     <main>
-      <h1>Asashiki MCP Console</h1>
-      <p>VPS 上的最小文字状态页。正式操作仍以 MCP、Core API 和 Archive 文件夹为主。</p>
+      <h1>Asashiki Console</h1>
+      <p class="muted">自动刷新 <span id="cd">30s</span> · 更新于 ${escapeHtml(updatedAt)}</p>
+
+      <h2>现在</h2>
+      ${liveStatus()}
+
+      <h2>今日时间线 (${escapeHtml(today)}，最近30条)</h2>
+      <table>${timelineRows()}</table>
+
+      <h2>今日应用统计</h2>
+      <table>${activityRows()}</table>
+
+      <h2>最近健康数据</h2>
+      <table>${healthRows()}</table>
 
       <h2>服务</h2>
       <table>
-        <tr><th>Core API</th><td class="ok">online · uptime ${escapeHtml(svcHealth.uptimeSeconds)}s</td></tr>
-        <tr><th>数据库</th><td><code>${escapeHtml(databasePath)}</code></td></tr>
-        <tr><th>环境</th><td>${escapeHtml(env.NODE_ENV)}</td></tr>
+        <tr><th>Core API</th><td class="ok">online · uptime ${escapeHtml(String(svcHealth.uptimeSeconds))}s</td></tr>
+        <tr><th>Archive</th><td class="${archiveStatus.status === "online" ? "ok" : "warn"}">${escapeHtml(archiveStatus.status)} · ${escapeHtml(String(archiveStatus.fileCount))} 篇日记 · 最新 ${escapeHtml(archiveStatus.latestDiaryDate ?? "—")}</td></tr>
+        <tr><th>上游 MCP</th><td>${escapeHtml(String(remoteServers.length))} registered</td></tr>
       </table>
-
-      <h2>档案</h2>
-      <table>
-        <tr><th>名称</th><td>${escapeHtml(profile.displayName)}</td></tr>
-        <tr><th>摘要</th><td>${escapeHtml(profile.summary)}</td></tr>
-      </table>
-
-      <h2>连接</h2>
-      <table>
-        <tr><th>连接器</th><td>${escapeHtml(connectorSummary.online)}/${escapeHtml(connectorSummary.total)} online</td></tr>
-        <tr><th>上游 MCP</th><td>${escapeHtml(remoteServers.length)} registered</td></tr>
-        <tr><th>Archive</th><td class="${archiveStatus.status === "online" ? "ok" : archiveStatus.status === "degraded" ? "warn" : "bad"}">${escapeHtml(archiveStatus.status)} · ${escapeHtml(archiveStatus.fileCount)} diary files</td></tr>
-        <tr><th>Archive root</th><td><code>${escapeHtml(archiveStatus.rootPath)}</code></td></tr>
-        <tr><th>Diary path</th><td><code>${escapeHtml(archiveStatus.diaryPath ?? "not found")}</code></td></tr>
-      </table>
-
-      <h2>设备 (${escapeHtml(deviceCurrent.devices.length)} 台)</h2>
-      <table>
-        ${deviceRows()}
-      </table>
-
-      <h2>今日应用活动 (${escapeHtml(today)})</h2>
-      <table>
-        ${activityRows()}
-      </table>
-
-      <h2>最近健康数据 (最新 10 条)</h2>
-      <table>
-        ${healthRows()}
-      </table>
-
-      <h2>常用检查</h2>
-      <table>
-        <tr><th>健康检查</th><td><code>/health</code></td></tr>
-        <tr><th>MCP 入口</th><td><code>https://mcp.asashiki.com/mcp</code></td></tr>
-        <tr><th>日记列表 API</th><td><code>/api/archive/diary</code></td></tr>
-        <tr><th>设备状态 API</th><td><code>/api/devices/current</code></td></tr>
-        <tr><th>健康记录 API</th><td><code>/api/devices/health</code></td></tr>
-      </table>
-
-      <p class="muted">更新时间：${escapeHtml(new Date().toISOString())}</p>
     </main>
   </body>
 </html>`;
