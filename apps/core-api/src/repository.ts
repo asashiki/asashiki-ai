@@ -632,14 +632,23 @@ export function createRepository(database: DatabaseSync) {
           typeof row.started_at === "string" ? row.started_at : "";
         const endedAt =
           typeof row.ended_at === "string" ? row.ended_at : null;
+        // Cap a single activity's duration at 4 hours.
+        // Why: when the agent goes offline mid-activity and reconnects much later,
+        // the previous activity's ended_at gets set to the new report time, which can
+        // span hours/days of phone-off time. Anything over 4h is almost certainly
+        // a tracking gap, not real continuous use.
+        const MAX_ACTIVITY_SECONDS = 4 * 60 * 60;
         const durationSeconds =
           endedAt && startedAt
-            ? Math.max(
-                0,
-                Math.round(
-                  (new Date(endedAt).getTime() -
-                    new Date(startedAt).getTime()) /
-                    1000
+            ? Math.min(
+                MAX_ACTIVITY_SECONDS,
+                Math.max(
+                  0,
+                  Math.round(
+                    (new Date(endedAt).getTime() -
+                      new Date(startedAt).getTime()) /
+                      1000
+                  )
                 )
               )
             : null;
