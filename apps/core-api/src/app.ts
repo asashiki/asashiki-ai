@@ -864,7 +864,7 @@ export async function createCoreApiApp(options?: {
       const fs = await import("node:fs");
       const path = await import("node:path");
       const archiveRoot = env.ASASHIKI_ARCHIVE_ROOT ?? "/archive";
-      const backupDir = path.join(archiveRoot, "备份", "db");
+      const backupDir = path.join(archiveRoot, "Obsidian_Asashiki", "归档", "数据库备份");
       fs.mkdirSync(backupDir, { recursive: true });
       const date = new Date().toISOString().slice(0, 10);
       const dest = path.join(backupDir, `core-api-${date}.sqlite`);
@@ -985,7 +985,7 @@ ${tlLines}
 `;
 
       const archiveRoot = env.ASASHIKI_ARCHIVE_ROOT ?? "/archive";
-      const digestDir = path.join(archiveRoot, "Obsidian_Asashiki", "数据日志");
+      const digestDir = path.join(archiveRoot, "Obsidian_Asashiki", "归档", "数据日志");
       fs.mkdirSync(digestDir, { recursive: true });
       const destFile = path.join(digestDir, `${date}.md`);
       fs.writeFileSync(destFile, markdown, "utf-8");
