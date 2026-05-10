@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'apps/windows-agent/**'
+      - 'apps/android-agent/app/src/main/ic_launcher_source.jpg'
       - '.github/workflows/windows-build.yml'
   workflow_dispatch:
 
@@ -19,6 +20,20 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
+
+      - name: Generate icon.ico from android source jpg
+        shell: pwsh
+        run: |
+          # Convert the same JPG that android-agent uses into a multi-resolution ICO.
+          # Use Magick (preinstalled on windows-latest as ImageMagick).
+          $src = "apps/android-agent/app/src/main/ic_launcher_source.jpg"
+          $dst = "apps/windows-agent/icon.ico"
+          if (Test-Path $src) {
+            magick "$src" -define icon:auto-resize="256,128,64,48,32,16" "$dst"
+            Write-Host "Generated $dst"
+          } else {
+            Write-Warning "Source JPG not found at $src - icon.ico will be missing"
+          }
 
       - name: Publish
         working-directory: apps/windows-agent

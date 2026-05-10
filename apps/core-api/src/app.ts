@@ -44,6 +44,7 @@ import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
 import { createSteamConnector, parseSteamEnv } from "./connectors/steam.js";
 import { fetchWeather, parseWeatherConfig } from "./connectors/weather.js";
 import { createRepository } from "./repository.js";
+import { appLabel, appName } from "./app-labels.js";
 
 export const coreApiEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -200,50 +201,7 @@ export async function createCoreApiApp(options?: {
       }
     }
 
-    // ── App name + activity description mapping ─────────────────────────────
-    const APP_LABELS: Record<string, { name: string; desc: string }> = {
-      "com.anthropic.claude":              { name: "Claude",       desc: "正在和 Claude 聊天~" },
-      "com.openai.chatgpt":               { name: "ChatGPT",      desc: "正在和 ChatGPT 聊天~" },
-      "com.google.android.apps.bard":     { name: "Gemini",       desc: "正在和 Gemini 聊天~" },
-      "com.twitter.android":              { name: "Twitter / X",  desc: "正在刷 Twitter~" },
-      "com.tencent.mobileqq":            { name: "QQ",           desc: "正在和朋友聊 QQ~" },
-      "com.tencent.mm":                  { name: "微信",          desc: "正在刷微信~" },
-      "tv.danmaku.bili":                 { name: "哔哩哔哩",      desc: "正在刷 B站~" },
-      "com.bilibili.app.blue":           { name: "哔哩哔哩",      desc: "正在刷 B站~" },
-      "com.google.android.youtube":      { name: "YouTube",      desc: "正在看 YouTube~" },
-      "com.zhihu.android":               { name: "知乎",          desc: "正在看知乎~" },
-      "com.weibo.android":               { name: "微博",          desc: "正在刷微博~" },
-      "com.ss.android.ugc.aweme":        { name: "抖音",          desc: "正在刷抖音~" },
-      "com.instagram.android":           { name: "Instagram",    desc: "正在刷 INS~" },
-      "com.discord":                     { name: "Discord",      desc: "正在摸鱼 Discord~" },
-      "com.telegram.messenger":          { name: "Telegram",     desc: "正在看 Telegram~" },
-      "org.telegram.messenger":          { name: "Telegram",     desc: "正在看 Telegram~" },
-      "com.whatsapp":                    { name: "WhatsApp",     desc: "正在聊 WhatsApp~" },
-      "com.netease.cloudmusic":          { name: "网易云音乐",    desc: "正在听网易云~" },
-      "com.kugou.android":               { name: "酷狗音乐",      desc: "正在听酷狗~" },
-      "com.tencent.qqmusic":             { name: "QQ音乐",        desc: "正在听 QQ音乐~" },
-      "com.spotify.music":               { name: "Spotify",      desc: "正在听 Spotify~" },
-      "com.netflix.mediaclient":         { name: "Netflix",      desc: "正在看 Netflix~" },
-      "com.notion.id":                   { name: "Notion",       desc: "正在整理 Notion~" },
-      "md.obsidian":                     { name: "Obsidian",     desc: "正在记笔记~" },
-      "com.github.android":             { name: "GitHub",       desc: "正在逛 GitHub~" },
-      "com.microsoft.outlook":           { name: "Outlook",      desc: "正在处理邮件~" },
-      "com.google.android.gm":          { name: "Gmail",        desc: "正在看邮件~" },
-      "com.autonavi.minimap":           { name: "高德地图",      desc: "正在导航~" },
-      "com.baidu.BaiduMap":             { name: "百度地图",      desc: "正在导航~" },
-      "com.google.android.apps.maps":   { name: "Google Maps",  desc: "正在导航~" },
-      "com.miHoYo.GenshinImpact":       { name: "原神",          desc: "正在打原神~" },
-      "com.miHoYo.bh3oversea":         { name: "崩坏3",         desc: "正在打崩3~" },
-      "com.HoYoverse.hkrpgoversea":    { name: "星穹铁道",      desc: "正在开星铁~" },
-      "com.android.settings":           { name: "系统设置",      desc: "正在改设置~" },
-      "com.miui.home":                  { name: "桌面",          desc: "在桌面发呆~" },
-      "com.android.camera2":            { name: "相机",          desc: "正在拍照~" },
-    };
-
-    function appLabel(appId: string | null | undefined): { name: string; desc: string } {
-      if (!appId) return { name: "未知", desc: "发呆中~" };
-      return APP_LABELS[appId] ?? { name: appId.split(".").pop() ?? appId, desc: `正在用 ${appId.split(".").pop() ?? appId}~` };
-    }
+    // App label mapping is imported from app-labels.ts
 
     function fmtTime(iso: string): string {
       return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
@@ -905,18 +863,7 @@ export async function createCoreApiApp(options?: {
         return m >= 60 ? `${Math.floor(m/60)}h${m%60}m` : `${m}分钟`;
       }
 
-      const APP_NAMES: Record<string, string> = {
-        "com.anthropic.claude": "Claude", "com.openai.chatgpt": "ChatGPT",
-        "com.twitter.android": "Twitter", "com.tencent.mobileqq": "QQ",
-        "com.tencent.mm": "微信", "tv.danmaku.bili": "哔哩哔哩",
-        "com.bilibili.app.blue": "哔哩哔哩", "com.google.android.youtube": "YouTube",
-        "com.zhihu.android": "知乎", "com.ss.android.ugc.aweme": "抖音",
-        "com.netease.cloudmusic": "网易云音乐", "com.spotify.music": "Spotify",
-        "com.notion.id": "Notion", "md.obsidian": "Obsidian",
-        "com.github.android": "GitHub", "com.miui.home": "桌面",
-        "com.android.settings": "设置",
-      };
-      const appName = (id: string) => APP_NAMES[id] ?? id.split(".").pop() ?? id;
+      // appName imported from app-labels.ts
 
       // App usage section
       const appLines = actSummary.perApp.slice(0, 15).map(a =>

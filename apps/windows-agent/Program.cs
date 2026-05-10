@@ -1,16 +1,13 @@
 // Asashiki Windows Agent
 // Based on live-dashboard windows-agent (https://github.com/nmb1337/live-dashboard)
-// Key changes:
-//   - Endpoint: /api/devices/report (was /api/report)
-//   - Fields: camelCase — appId, windowTitle, occurredAt (was app_id, window_title, timestamp)
-//   - Removed /api/consent
-//   - User-Agent: asashiki-windows-agent/1.0.0
 
 using System.Diagnostics;
+using System.Drawing;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using Microsoft.Win32;
 
 namespace AsashikiWindowsAgent;
 
@@ -48,6 +45,35 @@ static class NativeMethods
     }
 }
 
+// ── Auto-start on login (Windows Registry) ─────────────────────────────────
+
+static class AutoStart
+{
+    const string RUN_KEY = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    const string APP_NAME = "AsashikiWindowsAgent";
+
+    public static bool IsEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RUN_KEY, false);
+        return key?.GetValue(APP_NAME) != null;
+    }
+
+    public static void Enable()
+    {
+        var exe = Process.GetCurrentProcess().MainModule?.FileName ?? "";
+        if (string.IsNullOrEmpty(exe)) return;
+        using var key = Registry.CurrentUser.OpenSubKey(RUN_KEY, true)
+            ?? Registry.CurrentUser.CreateSubKey(RUN_KEY)!;
+        key.SetValue(APP_NAME, $"\"{exe}\"");
+    }
+
+    public static void Disable()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RUN_KEY, true);
+        key?.DeleteValue(APP_NAME, false);
+    }
+}
+
 // ── Config ─────────────────────────────────────────────────────────────────
 
 record CustomAppRule(string AppId, string CustomAppName, string? CustomDescription);
@@ -56,6 +82,7 @@ class AgentConfig
 {
     public string ServerUrl { get; set; } = "";
     public string Token { get; set; } = "";
+    public string DeviceName { get; set; } = "Windows";
     public int ReportIntervalSeconds { get; set; } = 10;
     public int HeartbeatIntervalSeconds { get; set; } = 60;
     public int AfkThresholdSeconds { get; set; } = 300;
@@ -184,7 +211,8 @@ class AgentReporter : IDisposable
             }
             else
             {
-                _log($"上报失败: HTTP {(int)resp.StatusCode}");
+                var resBody = await resp.Content.ReadAsStringAsync();
+                _log($"上报失败: HTTP {(int)resp.StatusCode} {resBody.Substring(0, Math.Min(100, resBody.Length))}");
             }
         }
         catch (Exception ex)
@@ -200,49 +228,115 @@ class AgentReporter : IDisposable
 
 class SettingsForm : Form
 {
-    readonly TextBox _urlBox = new() { Width = 300 };
-    readonly TextBox _tokenBox = new() { Width = 300 };
-    readonly NumericUpDown _intervalBox = new() { Minimum = 5, Maximum = 300, Width = 80 };
-    readonly NumericUpDown _afkBox = new() { Minimum = 30, Maximum = 3600, Width = 80 };
+    readonly TextBox _urlBox = new() { Width = 360 };
+    readonly TextBox _tokenBox = new() { Width = 360, UseSystemPasswordChar = true };
+    readonly TextBox _deviceNameBox = new() { Width = 360 };
+    readonly NumericUpDown _intervalBox = new() { Minimum = 5, Maximum = 300, Width = 100 };
+    readonly NumericUpDown _heartbeatBox = new() { Minimum = 30, Maximum = 600, Width = 100 };
+    readonly NumericUpDown _afkBox = new() { Minimum = 30, Maximum = 3600, Width = 100 };
+    readonly CheckBox _autoStartBox = new() { Text = "开机自动启动 (登录时启动)", AutoSize = true };
     public AgentConfig Config { get; private set; }
 
     public SettingsForm(AgentConfig config)
     {
         Config = config;
-        Text = "Asashiki Agent 设置";
-        AutoSize = true;
-        Padding = new Padding(16);
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        Text = "Asashiki Windows Agent 设置";
+        Size = new Size(540, 420);
+        MinimumSize = new Size(540, 420);
+        StartPosition = FormStartPosition.CenterScreen;
+        FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
+        Padding = new Padding(20);
 
         _urlBox.Text = config.ServerUrl;
         _tokenBox.Text = config.Token;
+        _deviceNameBox.Text = string.IsNullOrEmpty(config.DeviceName) ? "Windows" : config.DeviceName;
         _intervalBox.Value = config.ReportIntervalSeconds;
+        _heartbeatBox.Value = config.HeartbeatIntervalSeconds;
         _afkBox.Value = config.AfkThresholdSeconds;
+        _autoStartBox.Checked = AutoStart.IsEnabled();
 
-        var layout = new TableLayoutPanel { AutoSize = true, ColumnCount = 2, RowCount = 5, Padding = new Padding(8) };
-        layout.Controls.Add(new Label { Text = "Server URL:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleRight }, 0, 0);
+        var layout = new TableLayoutPanel
+        {
+            AutoSize = false,
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 8,
+            Padding = new Padding(10),
+            ColumnStyles = {
+                new ColumnStyle(SizeType.Absolute, 130),
+                new ColumnStyle(SizeType.Percent, 100),
+            }
+        };
+
+        Label mkLabel(string t) => new()
+        {
+            Text = t,
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(0, 8, 0, 0),
+        };
+
+        layout.Controls.Add(mkLabel("Server URL:"), 0, 0);
         layout.Controls.Add(_urlBox, 1, 0);
-        layout.Controls.Add(new Label { Text = "Device Token:", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleRight }, 0, 1);
+        layout.Controls.Add(mkLabel("Device Token:"), 0, 1);
         layout.Controls.Add(_tokenBox, 1, 1);
-        layout.Controls.Add(new Label { Text = "上报间隔(秒):", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleRight }, 0, 2);
-        layout.Controls.Add(_intervalBox, 1, 2);
-        layout.Controls.Add(new Label { Text = "AFK 阈值(秒):", AutoSize = true, TextAlign = System.Drawing.ContentAlignment.MiddleRight }, 0, 3);
-        layout.Controls.Add(_afkBox, 1, 3);
+        layout.Controls.Add(mkLabel("设备显示名:"), 0, 2);
+        layout.Controls.Add(_deviceNameBox, 1, 2);
+        layout.Controls.Add(mkLabel("上报间隔(秒):"), 0, 3);
+        layout.Controls.Add(_intervalBox, 1, 3);
+        layout.Controls.Add(mkLabel("心跳间隔(秒):"), 0, 4);
+        layout.Controls.Add(_heartbeatBox, 1, 4);
+        layout.Controls.Add(mkLabel("AFK阈值(秒):"), 0, 5);
+        layout.Controls.Add(_afkBox, 1, 5);
 
-        var saveBtn = new Button { Text = "保存", Width = 80 };
+        // Auto-start checkbox spans both columns
+        layout.Controls.Add(_autoStartBox, 0, 6);
+        layout.SetColumnSpan(_autoStartBox, 2);
+
+        // Buttons (Save / Cancel)
+        var buttonPanel = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.RightToLeft,
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 12, 0, 0),
+            AutoSize = true,
+        };
+        var saveBtn = new Button { Text = "保存", Width = 100, Height = 32 };
+        var cancelBtn = new Button { Text = "取消", Width = 100, Height = 32, Margin = new Padding(0, 0, 8, 0) };
         saveBtn.Click += (_, _) =>
         {
             Config.ServerUrl = _urlBox.Text.Trim();
             Config.Token = _tokenBox.Text.Trim();
+            Config.DeviceName = string.IsNullOrWhiteSpace(_deviceNameBox.Text) ? "Windows" : _deviceNameBox.Text.Trim();
             Config.ReportIntervalSeconds = (int)_intervalBox.Value;
+            Config.HeartbeatIntervalSeconds = (int)_heartbeatBox.Value;
             Config.AfkThresholdSeconds = (int)_afkBox.Value;
+            // Apply auto-start
+            try
+            {
+                if (_autoStartBox.Checked) AutoStart.Enable();
+                else AutoStart.Disable();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"自启动配置失败: {ex.Message}", "Asashiki Agent",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             DialogResult = DialogResult.OK;
             Close();
         };
-        layout.Controls.Add(saveBtn, 1, 4);
+        cancelBtn.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
+        buttonPanel.Controls.Add(saveBtn);
+        buttonPanel.Controls.Add(cancelBtn);
+
+        layout.Controls.Add(buttonPanel, 0, 7);
+        layout.SetColumnSpan(buttonPanel, 2);
 
         Controls.Add(layout);
+        AcceptButton = saveBtn;
+        CancelButton = cancelBtn;
     }
 }
 
@@ -271,8 +365,8 @@ class AgentApplicationContext : ApplicationContext
 
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
-            Text = "Asashiki Agent",
+            Icon = LoadAppIcon(),
+            Text = "Asashiki Windows Agent",
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -285,6 +379,22 @@ class AgentApplicationContext : ApplicationContext
         _timer.Start();
 
         Log("Agent 已启动");
+    }
+
+    static Icon LoadAppIcon()
+    {
+        // Use the same icon that's bundled with the EXE (set via <ApplicationIcon> in csproj)
+        try
+        {
+            var exe = Process.GetCurrentProcess().MainModule?.FileName;
+            if (exe != null && File.Exists(exe))
+            {
+                var ic = Icon.ExtractAssociatedIcon(exe);
+                if (ic != null) return ic;
+            }
+        }
+        catch { }
+        return SystemIcons.Application;
     }
 
     void Log(string msg)
@@ -310,8 +420,23 @@ class AgentApplicationContext : ApplicationContext
     void OnShowLogs(object? sender, EventArgs e)
     {
         var text = string.Join("\n", _logs.TakeLast(50));
-        MessageBox.Show(text, "Asashiki Agent 日志",
-            MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var form = new Form
+        {
+            Text = "Asashiki Agent 日志",
+            Size = new Size(700, 500),
+            StartPosition = FormStartPosition.CenterScreen
+        };
+        var box = new TextBox
+        {
+            Multiline = true,
+            ReadOnly = true,
+            Dock = DockStyle.Fill,
+            ScrollBars = ScrollBars.Vertical,
+            Font = new Font(FontFamily.GenericMonospace, 9),
+            Text = text
+        };
+        form.Controls.Add(box);
+        form.ShowDialog();
     }
 
     protected override void Dispose(bool disposing)

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,7 @@ class TrackingService : Service() {
     private var lastSentKey = ""
     private var lastSuccessfulReportAt = 0L
     private var lastNotificationText = ""
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -89,6 +91,7 @@ class TrackingService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, buildNotification("正在准备监听"))
         }
+        acquireWakeLock()
         scheduleWatchdog()
 
         trackingJob = serviceScope.launch {
@@ -176,11 +179,29 @@ class TrackingService : Service() {
         lastSentKey = ""
         lastSuccessfulReportAt = 0L
         lastNotificationText = ""
+        releaseWakeLock()
         if (cancelWatchdog) {
             cancelWatchdog()
         }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(PowerManager::class.java)
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Asashiki:TrackingWakeLock").apply {
+            setReferenceCounted(false)
+            // Long timeout (24h) as safety net; we release on stop
+            acquire(24 * 60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        }
+        wakeLock = null
     }
 
     private fun setServiceState(text: String, logText: String = text) {
