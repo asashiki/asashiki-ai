@@ -92,7 +92,43 @@ export const APP_LABELS: Record<string, AppLabel> = {
   "com.netease.onmyoji":               { name: "阴阳师",        desc: "正在抽阴阳师~" },
   "com.tencent.tmgp.pubgmhd":          { name: "和平精英",      desc: "正在吃鸡~" },
 
-  // ── System / MIUI ────────────────────────────────────────────────────────
+  // ── Windows process names (Windows agent reports lowercased proc.ProcessName) ──
+  "msedge":                            { name: "Edge",         desc: "正在用 Edge 浏览~" },
+  "chrome":                            { name: "Chrome",       desc: "正在用 Chrome 浏览~" },
+  "firefox":                           { name: "Firefox",      desc: "正在用 Firefox 浏览~" },
+  "opera":                             { name: "Opera",        desc: "正在用 Opera 浏览~" },
+  "brave":                             { name: "Brave",        desc: "正在用 Brave 浏览~" },
+  "code":                              { name: "VS Code",      desc: "正在 coding~" },
+  "cursor":                            { name: "Cursor",       desc: "正在 coding (Cursor)~" },
+  "windsurf":                          { name: "Windsurf",     desc: "正在 coding (Windsurf)~" },
+  "devenv":                            { name: "Visual Studio", desc: "正在用 VS 写 .NET~" },
+  "rider64":                           { name: "Rider",        desc: "正在 coding (Rider)~" },
+  "idea64":                            { name: "IntelliJ IDEA", desc: "正在 coding (IDEA)~" },
+  "pycharm64":                         { name: "PyCharm",      desc: "正在 coding (PyCharm)~" },
+  "webstorm64":                        { name: "WebStorm",     desc: "正在 coding (WebStorm)~" },
+  "windowsterminal":                   { name: "Windows Terminal", desc: "在敲命令行~" },
+  "wt":                                { name: "Windows Terminal", desc: "在敲命令行~" },
+  "powershell":                        { name: "PowerShell",   desc: "在敲 PowerShell~" },
+  "pwsh":                              { name: "PowerShell",   desc: "在敲 PowerShell~" },
+  "cmd":                               { name: "Cmd",          desc: "在敲 cmd~" },
+  "explorer":                          { name: "文件资源管理器", desc: "在翻文件夹~" },
+  "notepad":                           { name: "记事本",        desc: "在记事本写东西~" },
+  "obsidian":                          { name: "Obsidian",     desc: "在 Obsidian 记笔记~" },
+  "discord":                           { name: "Discord",      desc: "在 Discord 摸鱼~" },
+  "telegram":                          { name: "Telegram",     desc: "在看 Telegram~" },
+  "qqmusic":                           { name: "QQ音乐",        desc: "在听 QQ 音乐~" },
+  "cloudmusic":                        { name: "网易云音乐",    desc: "在听网易云~" },
+  "spotify":                           { name: "Spotify",      desc: "在听 Spotify~" },
+  "steam":                             { name: "Steam",        desc: "在 Steam 上挑游戏~" },
+  "winrar":                            { name: "WinRAR",       desc: "在解压文件~" },
+  "7zfm":                              { name: "7-Zip",        desc: "在解压文件~" },
+  "applicationframehost":              { name: "UWP 应用",      desc: "在用 UWP 应用~" },
+  "shellexperiencehost":               { name: "系统界面",      desc: "切系统界面~" },
+  "searchhost":                        { name: "搜索",          desc: "在 Windows 搜索~" },
+  "windows.afk":                       { name: "AFK",          desc: "暂时离开~" },
+  "windows.idle":                      { name: "Windows",      desc: "Windows 待机~" },
+
+  // ── Mobile system / MIUI ─────────────────────────────────────────────────
   "com.miui.home":                     { name: "桌面",          desc: "在桌面发呆~" },
   "com.miui.gallery":                  { name: "相册",          desc: "正在翻相册~" },
   "com.miui.notes":                    { name: "便签",          desc: "正在记便签~" },
@@ -122,3 +158,66 @@ export function appLabel(appId: string | null | undefined): AppLabel {
 export function appName(appId: string | null | undefined): string {
   return appLabel(appId).name;
 }
+
+// ─── Live description (uses windowTitle when available) ─────────────────────
+
+const BROWSER_PROCS = new Set(["msedge", "chrome", "firefox", "opera", "brave"]);
+const EDITOR_PROCS = new Set(["code", "cursor", "windsurf", "devenv", "rider64", "idea64", "pycharm64", "webstorm64", "notepad"]);
+const TERMINAL_PROCS = new Set(["windowsterminal", "wt", "powershell", "pwsh", "cmd"]);
+
+// Strip common suffixes like " - Microsoft​ Edge", " — Mozilla Firefox" etc.
+const BROWSER_SUFFIX_RE = /\s*[-—–]\s*(Microsoft\s*Edge|Google Chrome|Mozilla Firefox|Opera|Brave)\s*$/i;
+// VS Code: "file.ts - folder - Visual Studio Code"
+const EDITOR_SUFFIX_RE = /\s*[-—–]\s*(Visual Studio Code|Visual Studio|Cursor|Windsurf|JetBrains [^-—–]+|Rider|IntelliJ IDEA|PyCharm|WebStorm)\s*$/i;
+// Generic strip leading/trailing whitespace + common nbsp variants
+function clean(s: string): string {
+  return s.replace(/[​-‍﻿ ]/g, " ").trim();
+}
+
+export interface LiveContext {
+  appId: string | null | undefined;
+  windowTitle?: string | null;
+  who?: string;
+}
+
+export function liveDescription({ appId, windowTitle, who = "Asashiki" }: LiveContext): string {
+  const lbl = appLabel(appId);
+  const title = windowTitle ? clean(windowTitle) : "";
+
+  // Browsers: extract tab name from window title
+  if (appId && BROWSER_PROCS.has(appId) && title) {
+    const tab = clean(title.replace(BROWSER_SUFFIX_RE, ""));
+    if (tab && tab.length > 0 && tab !== title) {
+      // Heuristic: detect well-known sites in tab text
+      const lower = tab.toLowerCase();
+      if (lower.includes("youtube"))   return `${who} 在 ${lbl.name} 上看 YouTube：${truncate(tab.replace(/^.*-\s*YouTube.*$/i, "").trim() || tab, 40)}`;
+      if (lower.includes("bilibili") || lower.includes("哔哩哔哩")) return `${who} 在 ${lbl.name} 上刷 B 站：${truncate(tab, 40)}`;
+      if (lower.includes("github"))    return `${who} 在 ${lbl.name} 上逛 GitHub：${truncate(tab, 40)}`;
+      if (lower.includes("twitter") || lower.includes(" / x"))    return `${who} 在 ${lbl.name} 上刷 Twitter`;
+      if (lower.includes("stack overflow")) return `${who} 在 ${lbl.name} 上查 Stack Overflow`;
+      return `${who} 在 ${lbl.name} 看「${truncate(tab, 50)}」`;
+    }
+  }
+
+  // Editors: extract filename
+  if (appId && EDITOR_PROCS.has(appId) && title) {
+    const stripped = clean(title.replace(EDITOR_SUFFIX_RE, ""));
+    if (stripped && stripped !== title) {
+      const file = stripped.split(/\s*[-—–]\s*/)[0];
+      if (file) return `${who} 在 ${lbl.name} 写 ${truncate(file, 50)}`;
+    }
+  }
+
+  // Terminals: try to show the working directory or running command if it's in the title
+  if (appId && TERMINAL_PROCS.has(appId) && title) {
+    return `${who} 在 ${lbl.name}：${truncate(title, 60)}`;
+  }
+
+  // Default: prefix user name to the standard description
+  return `${who} ${lbl.desc}`;
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+

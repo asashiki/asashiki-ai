@@ -614,18 +614,22 @@ export function createRepository(database: DatabaseSync) {
       });
     },
 
-    getDeviceTimeline(date: string) {
+    getDeviceTimeline(date: string, deviceId?: string | null) {
       const dayStart = `${date}T00:00:00.000Z`;
       const dayEnd = `${date}T23:59:59.999Z`;
 
-      const rows = database
-        .prepare(
-          `SELECT id, device_id, app_id, window_title, started_at, ended_at, extra_json
+      const sql = deviceId
+        ? `SELECT id, device_id, app_id, window_title, started_at, ended_at, extra_json
+           FROM device_activities
+           WHERE started_at BETWEEN ? AND ? AND device_id = ?
+           ORDER BY started_at ASC`
+        : `SELECT id, device_id, app_id, window_title, started_at, ended_at, extra_json
            FROM device_activities
            WHERE started_at BETWEEN ? AND ?
-           ORDER BY started_at ASC`
-        )
-        .all(dayStart, dayEnd) as JsonRow[];
+           ORDER BY started_at ASC`;
+      const rows = (deviceId
+        ? database.prepare(sql).all(dayStart, dayEnd, deviceId)
+        : database.prepare(sql).all(dayStart, dayEnd)) as JsonRow[];
 
       const activities = rows.map((row) => {
         const startedAt =
