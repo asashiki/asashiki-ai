@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        autoStartTrackingIfNeeded()
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -142,6 +143,27 @@ class MainActivity : ComponentActivity() {
             }
         }
         checkHcPermissions()
+    }
+
+    /**
+     * If user previously enabled tracking but the service is dead (killed by MIUI / reboot),
+     * silently start it back up the next time MainActivity opens.
+     * Without this, after MIUI kills the app the user has to manually click 停止→启动 again.
+     */
+    private fun autoStartTrackingIfNeeded() {
+        val settings = SettingsStore(this).load()
+        val shouldRun = settings.isRunningEnabled &&
+            settings.consentGiven &&
+            settings.reportActivity &&
+            settings.serverUrl.isNotBlank() &&
+            settings.token.isNotBlank()
+        if (!shouldRun) return
+        runCatching {
+            val intent = Intent(this, TrackingService::class.java).apply {
+                action = TrackingService.ACTION_START
+            }
+            ContextCompat.startForegroundService(this, intent)
+        }
     }
 
     private fun checkHcPermissions() {

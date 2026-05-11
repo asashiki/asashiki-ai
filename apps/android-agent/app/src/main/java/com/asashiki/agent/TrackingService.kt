@@ -1,6 +1,7 @@
 package com.asashiki.agent
 
 import android.app.AlarmManager
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -83,11 +84,11 @@ class TrackingService : Service() {
     private fun startTrackingIfNeeded() {
         if (trackingJob?.isActive == true) return
 
-        // Explicitly specify dataSync type so the service starts even without location permission.
-        // Location type is only used by LocationTracker internally when permission is granted.
+        // FGS type combines DATA_SYNC + LOCATION when location permission is granted.
+        // LOCATION type gives the strongest background guarantees on MIUI/HyperOS.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, buildNotification("正在准备监听"),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                effectiveServiceType())
         } else {
             startForeground(NOTIFICATION_ID, buildNotification("正在准备监听"))
         }
@@ -272,12 +273,46 @@ class TrackingService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.stat_notify_sync)
-        .setContentTitle("Asashiki 状态监听")
-        .setContentText(text)
-        .setOngoing(true)
-        .build()
+    private fun buildNotification(text: String): Notification {
+        // Tap on notification reopens MainActivity
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPi = PendingIntent.getActivity(
+            this, 0, openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle("Asashiki 状态监听")
+            .setContentText(text)
+            .setOngoing(true)               // marks as ongoing (not user-dismissable while service active)
+            .setOnlyAlertOnce(true)         // no sound/vibration on update
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(openPi)
+            .setShowWhen(false)
+            .build()
+        // Belt-and-braces: explicitly set FLAG_NO_CLEAR + FLAG_ONGOING_EVENT
+        // so MIUI is less likely to allow user-swipe-dismiss.
+        notif.flags = notif.flags or Notification.FLAG_NO_CLEAR or Notification.FLAG_ONGOING_EVENT
+        return notif
+    }
+
+    private fun effectiveServiceType(): Int {
+        var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // Android 14+ requires permission check before adding LOCATION type
+            if (locationTracker.hasPermission()) {
+                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+        } else if (locationTracker.hasPermission()) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+        }
+        return type
+    }
 
     private fun updateNotificationNow(text: String) {
         val manager = getSystemService(NotificationManager::class.java)

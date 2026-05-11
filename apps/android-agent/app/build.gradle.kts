@@ -12,7 +12,10 @@ android {
         applicationId = "com.asashiki.agent"
         minSdk = 28
         targetSdk = 36
-        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        // CI passes -PversionCode=<github.run_number>. Add base offset 1000 so we always
+        // stay above any past local builds and to leave headroom against version downgrades.
+        val ciCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 0
+        versionCode = ciCode + 1000
         versionName = "1.0.${versionCode}"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
