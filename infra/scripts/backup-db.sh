@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SQLite backup — call via cron, e.g. every Sunday 03:00
-# 0 3 * * 0 /opt/apps/asashiki-ai/asashiki-ai/infra/scripts/backup-db.sh >> /var/log/asashiki-backup.log 2>&1
+# 0 3 * * 0 /opt/apps/asashiki-ai/asashiki-ai/infra/scripts/backup-db.sh >> ~/.local/log/asashiki-backup.log 2>&1
 set -euo pipefail
 
 TOKEN=$(grep ADMIN_PANEL_TOKEN /opt/apps/asashiki-ai/asashiki-ai/.env.production | cut -d= -f2)

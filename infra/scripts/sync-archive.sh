@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sync Asashiki_Archive to private GitHub repository
-# Cron: 0 4 * * * /opt/apps/asashiki-ai/asashiki-ai/infra/scripts/sync-archive.sh >> /var/log/asashiki-archive-sync.log 2>&1
+# Cron: 0 4 * * * /opt/apps/asashiki-ai/asashiki-ai/infra/scripts/sync-archive.sh >> ~/.local/log/archive-sync.log 2>&1
+# (Use ~/.local/log/, NOT /var/log/ — asashiki user has no write perm there.)
 set -euo pipefail
 
 ARCHIVE_DIR="/opt/asashiki/Asashiki_Archive"

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Daily Markdown digest — call via cron, e.g. every day 23:50
-# 50 23 * * * /opt/apps/asashiki-ai/asashiki-ai/infra/scripts/daily-digest.sh >> /var/log/asashiki-digest.log 2>&1
+# 50 23 * * * /opt/apps/asashiki-ai/asashiki-ai/infra/scripts/daily-digest.sh >> ~/.local/log/asashiki-digest.log 2>&1
 set -euo pipefail
 
 TOKEN=$(grep ADMIN_PANEL_TOKEN /opt/apps/asashiki-ai/asashiki-ai/.env.production | cut -d= -f2)
