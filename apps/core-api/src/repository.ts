@@ -496,7 +496,8 @@ export function createRepository(database: DatabaseSync) {
 
     recordDeviceReport(identity: DeviceIdentity, input: unknown) {
       const payload = deviceReportInputSchema.parse(input);
-      const occurredAt = payload.occurredAt ?? new Date().toISOString();
+      const receivedAt = new Date().toISOString();
+      const occurredAt = payload.occurredAt ?? receivedAt;
       const extraJson = payload.extra ? JSON.stringify(payload.extra) : null;
 
       const previousState = database
@@ -543,7 +544,7 @@ export function createRepository(database: DatabaseSync) {
             payload.windowTitle ?? null,
             occurredAt,
             extraJson,
-            new Date().toISOString()
+            receivedAt
           );
       }
 
@@ -567,16 +568,17 @@ export function createRepository(database: DatabaseSync) {
           identity.platform,
           payload.appId,
           payload.windowTitle ?? null,
-          occurredAt,
+          receivedAt,
           extraJson,
-          new Date().toISOString()
+          receivedAt
         );
 
       return {
         ok: true,
         deviceId: identity.deviceId,
         stateChanged,
-        recordedAt: occurredAt
+        recordedAt: occurredAt,
+        receivedAt
       };
     },
 
