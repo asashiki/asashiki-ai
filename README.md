@@ -130,11 +130,13 @@ ASASHIKI_ARCHIVE_ROOT=/archive
 ASASHIKI_DIARY_DIR=
 ```
 
-极简状态页登录：
+管理写入接口 token：
 
 ```env
 ADMIN_PANEL_TOKEN=replace-with-a-long-random-password
 ```
+
+`/console` 是临时调试状态页，生产上公开展示；`ADMIN_PANEL_TOKEN` 仍用于语音消息、DB 备份、daily digest 等管理写入接口。
 
 如果 `docker compose ps` 仍显示 `127.0.0.1:4100->4100/tcp` 或 `127.0.0.1:4200->4200/tcp`，先检查 `.env.production` 和 `--env-file` 是否生效。
 

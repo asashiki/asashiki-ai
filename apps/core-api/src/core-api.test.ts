@@ -48,11 +48,12 @@ test("empty optional integrations do not block core-api startup", async () => {
     });
     assert.equal(timeLogRecent.statusCode, 503);
 
-    const unauthenticatedConsole = await server.inject({
+    const publicConsole = await server.inject({
       method: "GET",
       url: "/console"
     });
-    assert.equal(unauthenticatedConsole.statusCode, 401);
+    assert.equal(publicConsole.statusCode, 200);
+    assert.match(publicConsole.body, /Asashiki Console/);
 
     const authenticatedConsole = await server.inject({
       method: "GET",
@@ -64,7 +65,7 @@ test("empty optional integrations do not block core-api startup", async () => {
       }
     });
     assert.equal(authenticatedConsole.statusCode, 200);
-    assert.match(authenticatedConsole.body, /Asashiki MCP Console/);
+    assert.match(authenticatedConsole.body, /Asashiki Console/);
   } finally {
     await server.close();
     rmSync(directory, { recursive: true, force: true });

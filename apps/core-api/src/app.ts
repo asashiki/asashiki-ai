@@ -200,14 +200,6 @@ export async function createCoreApiApp(options?: {
   );
 
   server.get("/console", async (request, reply) => {
-    if (env.ADMIN_PANEL_TOKEN) {
-      const password = getBasicPassword(request.headers.authorization);
-      if (password !== env.ADMIN_PANEL_TOKEN) {
-        reply.code(401).header("WWW-Authenticate", 'Basic realm="Asashiki Console"');
-        return "Authentication required.";
-      }
-    }
-
     // App label mapping is imported from app-labels.ts
 
     function fmtTime(iso: string): string {
