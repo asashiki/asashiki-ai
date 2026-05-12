@@ -44,8 +44,13 @@ class VoiceMessagePoller(
                         val msgs = ApiReporter.pollPendingVoiceMessages(url, token)
                         for (m in msgs) {
                             if (seenIds.contains(m.id)) continue
-                            handleMessage(m, url, token)
-                            seenIds.add(m.id)
+                            // Only mark as seen if handleMessage actually succeeds (audio
+                            // downloaded + notification shown). Otherwise leave it pending
+                            // so the next poll retries — important when the audioUrl is
+                            // temporarily unreachable.
+                            if (handleMessage(m, url, token)) {
+                                seenIds.add(m.id)
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -58,11 +63,12 @@ class VoiceMessagePoller(
 
     fun stop() { job?.cancel(); job = null }
 
-    private fun handleMessage(msg: VoiceMessage, baseUrl: String, token: String) {
+    private fun handleMessage(msg: VoiceMessage, baseUrl: String, token: String): Boolean {
         // Download audio and cache
         val bytes = ApiReporter.downloadAudio(msg.audioUrl) ?: run {
-            Log.w(TAG, "download failed for msg ${msg.id}")
-            return
+            Log.w(TAG, "download failed for msg ${msg.id} url=${msg.audioUrl}")
+            SettingsStore(context).appendLog("语音 #${msg.id} 下载失败")
+            return false
         }
         val cacheFile = File(VoicePlaybackService.cacheDir(context), "msg-${msg.id}.mp3")
         cacheFile.writeBytes(bytes)
@@ -72,6 +78,7 @@ class VoiceMessagePoller(
 
         showNotification(msg, cacheFile)
         SettingsStore(context).appendLog("收到 ${msg.senderName} 的语音 #${msg.id}：${msg.text.take(40)}")
+        return true
     }
 
     private fun showNotification(msg: VoiceMessage, audioFile: File) {

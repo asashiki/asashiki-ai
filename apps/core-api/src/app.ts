@@ -890,10 +890,19 @@ export async function createCoreApiApp(options?: {
     const identity = deviceAuth.resolve(request.headers.authorization);
     if (!identity) { reply.code(401); return { error: "Invalid device token." }; }
 
-    // Build base URL from incoming request so the device can fetch the audio
-    const proto = (request.headers["x-forwarded-proto"] as string) ?? "https";
-    const host = (request.headers["x-forwarded-host"] as string) ?? request.headers.host ?? "";
-    const audioBaseUrl = `${proto}://${host}/voice`;
+    // Build the audio URL the phone will fetch. Priority:
+    //  1. PUBLIC_BASE_URL env (most reliable — set this when behind a reverse proxy)
+    //  2. X-Forwarded-Proto + X-Forwarded-Host (works if reverse proxy sets them)
+    //  3. request.headers.host (only useful for direct / localhost calls)
+    const publicBase = (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/$/, "");
+    let audioBaseUrl: string;
+    if (publicBase) {
+      audioBaseUrl = `${publicBase}/voice`;
+    } else {
+      const proto = (request.headers["x-forwarded-proto"] as string) ?? "https";
+      const host = (request.headers["x-forwarded-host"] as string) ?? request.headers.host ?? "";
+      audioBaseUrl = `${proto}://${host}/voice`;
+    }
 
     const messages = repository.getPendingVoiceMessages(identity.deviceId, audioBaseUrl);
     return { fetchedAt: new Date().toISOString(), messages };
