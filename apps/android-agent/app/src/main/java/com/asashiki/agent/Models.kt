@@ -46,3 +46,14 @@ data class MusicInfo(
     val artist: String? = null,
     val app: String? = null
 )
+
+// ── Voice messages (AI → device push) ─────────────────────────────────────
+
+data class VoiceMessage(
+    val id: Long,
+    val senderName: String,
+    val senderAvatarUrl: String?,
+    val text: String,
+    val audioUrl: String,
+    val createdAt: String
+)

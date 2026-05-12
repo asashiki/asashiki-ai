@@ -75,6 +75,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync|location" />
 
+        <!-- Voice message playback service (triggered by notification tap) -->
+        <service
+            android:name=".VoicePlaybackService"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Music notification listener (from live-dashboard) -->
         <service
             android:name=".MusicNotificationListenerService"

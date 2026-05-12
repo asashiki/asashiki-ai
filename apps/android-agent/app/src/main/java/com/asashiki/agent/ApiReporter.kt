@@ -13,6 +13,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.time.Instant
@@ -122,6 +123,69 @@ object ApiReporter {
             }
         } catch (e: Exception) {
             "error: ${e.message}"
+        }
+    }
+
+    // ── Voice messages ──────────────────────────────────────────────────────
+
+    fun pollPendingVoiceMessages(baseUrl: String, token: String): List<VoiceMessage> {
+        val normalized = normalizeBaseUrl(baseUrl) ?: return emptyList()
+        if (token.isBlank()) return emptyList()
+        val request = Request.Builder()
+            .url("$normalized/api/devices/voice-messages/pending")
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("User-Agent", "asashiki-android-agent/1.0.0")
+            .get()
+            .build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return emptyList()
+                val body = response.body?.string() ?: return emptyList()
+                val obj = JSONObject(body)
+                val arr = obj.optJSONArray("messages") ?: JSONArray()
+                buildList {
+                    for (i in 0 until arr.length()) {
+                        val m = arr.getJSONObject(i)
+                        add(
+                            VoiceMessage(
+                                id = m.getLong("id"),
+                                senderName = m.optString("senderName", "AI"),
+                                senderAvatarUrl = m.optString("senderAvatarUrl").takeIf { it.isNotEmpty() && it != "null" },
+                                text = m.optString("text", ""),
+                                audioUrl = m.optString("audioUrl", ""),
+                                createdAt = m.optString("createdAt", "")
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "pollPendingVoiceMessages error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    fun markVoiceMessageAck(baseUrl: String, token: String, messageId: Long, ackType: String): Boolean {
+        // ackType is "delivered" or "played"
+        val normalized = normalizeBaseUrl(baseUrl) ?: return false
+        if (token.isBlank()) return false
+        val request = Request.Builder()
+            .url("$normalized/api/devices/voice-messages/$messageId/$ackType")
+            .addHeader("Authorization", "Bearer $token")
+            .post("".toRequestBody(jsonMediaType))
+            .build()
+        return execute(request)
+    }
+
+    fun downloadAudio(audioUrl: String): ByteArray? {
+        val request = Request.Builder().url(audioUrl).get().build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) null else response.body?.bytes()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "downloadAudio error: ${e.message}")
+            null
         }
     }
 

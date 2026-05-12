@@ -26,6 +26,7 @@ class TrackingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var settingsStore: SettingsStore
     private lateinit var locationTracker: LocationTracker
+    private lateinit var voicePoller: VoiceMessagePoller
 
     private var trackingJob: Job? = null
     private var lastSentKey = ""
@@ -37,6 +38,7 @@ class TrackingService : Service() {
         super.onCreate()
         settingsStore = SettingsStore(this)
         locationTracker = LocationTracker(this, serviceScope)
+        voicePoller = VoiceMessagePoller(this, serviceScope)
         createNotificationChannel()
         settingsStore.appendLog("服务已创建")
     }
@@ -94,6 +96,10 @@ class TrackingService : Service() {
         }
         acquireWakeLock()
         scheduleWatchdog()
+        voicePoller.start(
+            getServerUrl = { settingsStore.load().serverUrl },
+            getToken = { settingsStore.load().token }
+        )
 
         trackingJob = serviceScope.launch {
             while (isActive) {
@@ -175,6 +181,7 @@ class TrackingService : Service() {
 
     private fun stopTracking(cancelWatchdog: Boolean = true) {
         locationTracker.stop()
+        voicePoller.stop()
         trackingJob?.cancel()
         trackingJob = null
         lastSentKey = ""
