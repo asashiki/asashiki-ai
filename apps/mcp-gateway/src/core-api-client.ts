@@ -49,7 +49,7 @@ function resolveUrl(baseUrl: string, path: string) {
   return new URL(path, baseUrl).toString();
 }
 
-export function createCoreApiClient(baseUrl: string) {
+export function createCoreApiClient(baseUrl: string, adminToken?: string) {
   return {
     async getProfileSummary() {
       const response = await fetch(resolveUrl(baseUrl, "/api/profile/summary"));
@@ -369,6 +369,21 @@ export function createCoreApiClient(baseUrl: string) {
       const res = await fetch(resolveUrl(baseUrl, "/api/steam/profile"));
       if (!res.ok) throw new Error("Steam profile unavailable.");
       return steamPlayerSummarySchema.parse(await res.json());
+    },
+
+    async sendVoiceMessage(input: { deviceId: string; senderName: string; senderAvatarUrl?: string; text: string }) {
+      if (!adminToken) throw new Error("Admin token not configured for voice message send.");
+      const res = await fetch(resolveUrl(baseUrl, "/api/voice-messages"), {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${adminToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(input)
+      });
+      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      return body;
     },
 
     async searchArchive(input: unknown) {

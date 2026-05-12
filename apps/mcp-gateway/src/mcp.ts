@@ -81,6 +81,7 @@ const mcpToolIds = [
   "get_okx_assets",
   "get_steam_recent_games",
   "get_steam_profile",
+  "send_voice_message",
   "get_weather",
   "get_current_location",
   "get_location_history"
@@ -290,6 +291,13 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     description:
       "Return the Steam player profile including display name, online status, current game being played, and last seen time.",
     readOnlyHint: true
+  },
+  {
+    id: "send_voice_message",
+    title: "Send Voice Message to Phone",
+    description:
+      "Send a TTS voice bubble notification to the user's Android phone. The text is synthesized via MiniMax (温柔的女性声音) and delivered as a heads-up notification — tap once to play. Use sparingly, only when a quick spoken update genuinely beats text. Required: deviceId (e.g. 'android-phone'), senderName (your AI name like 'Claude' / 'Codex'), text (1-300 chars Chinese works best). Optional: senderAvatarUrl.",
+    readOnlyHint: false
   },
   {
     id: "search_archive",
@@ -1013,6 +1021,28 @@ export function createMcpGatewayServer(client: CoreApiClient) {
       return {
         content: [{ type: "text", text: `${output.displayName} (${output.status})${playing}` }],
         structuredContent: output
+      };
+    }
+  );
+
+  const sendVoiceMessageTool = mcpToolCatalog.find((t) => t.id === "send_voice_message")!;
+  server.registerTool(
+    "send_voice_message",
+    {
+      title: sendVoiceMessageTool.title,
+      description: sendVoiceMessageTool.description,
+      inputSchema: z.object({
+        deviceId: z.string().min(1).describe("Target device id, e.g. 'android-phone'"),
+        senderName: z.string().min(1).describe("Your AI name as it should appear in the notification, e.g. 'Claude'"),
+        senderAvatarUrl: z.string().url().optional().describe("Optional avatar image URL"),
+        text: z.string().min(1).max(300).describe("What to say. Keep it short — one sentence works best for voice.")
+      }),
+      annotations: { readOnlyHint: false }
+    },
+    async (input) => {
+      const result = await client.sendVoiceMessage(input);
+      return {
+        content: [{ type: "text", text: `Voice message queued (id=${(result as any).id}, ${(result as any).audioBytes ?? "?"} bytes). Will be picked up by ${input.deviceId} on next poll (≤ 10s).` }]
       };
     }
   );

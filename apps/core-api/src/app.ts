@@ -43,8 +43,12 @@ import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
 import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
 import { createSteamConnector, parseSteamEnv } from "./connectors/steam.js";
 import { fetchWeather, parseWeatherConfig } from "./connectors/weather.js";
+import { parseMinimaxConfig, synthesizeVoice } from "./connectors/minimax.js";
 import { createRepository } from "./repository.js";
 import { appLabel, appName, liveDescription } from "./app-labels.js";
+import * as nodeFs from "node:fs";
+import * as nodePath from "node:path";
+import { randomUUID } from "node:crypto";
 
 export const coreApiEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -169,6 +173,9 @@ export async function createCoreApiApp(options?: {
   const steamConfig = parseSteamEnv(process.env);
   const steam = steamConfig ? createSteamConnector(steamConfig) : null;
   const weatherConfig = parseWeatherConfig(process.env);
+  const minimaxConfig = parseMinimaxConfig(process.env);
+  const voiceDir = nodePath.join(nodePath.dirname(databasePath), "voice");
+  nodeFs.mkdirSync(voiceDir, { recursive: true });
 
   const manifest = serviceManifestSchema.parse({
     id: "core-api",
@@ -834,6 +841,82 @@ export async function createCoreApiApp(options?: {
     if (!steam) { reply.code(503); return { message: "Steam not configured." }; }
     try { return await steam.getPlayerSummary(); }
     catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "Steam error." }; }
+  });
+
+  // ── Voice messages (AI → device push) ───────────────────────────────────
+  // Static-serve generated MP3s. UUID filenames are unguessable.
+  server.get("/voice/:filename", async (request, reply) => {
+    const { filename } = request.params as { filename: string };
+    if (!/^[a-f0-9-]+\.mp3$/i.test(filename)) { reply.code(400); return { error: "bad filename" }; }
+    const fullPath = nodePath.join(voiceDir, filename);
+    if (!nodeFs.existsSync(fullPath)) { reply.code(404); return { error: "not found" }; }
+    reply.header("Content-Type", "audio/mpeg");
+    reply.header("Cache-Control", "public, max-age=86400");
+    return nodeFs.createReadStream(fullPath);
+  });
+
+  // Enqueue a voice message: synthesize via MiniMax, persist file, insert row.
+  // Auth: admin token (called by MCP gateway internally OR directly by ops).
+  server.post("/api/voice-messages", async (request, reply) => {
+    const password = getBasicPassword(request.headers.authorization);
+    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    const authed = (env.ADMIN_PANEL_TOKEN && password === env.ADMIN_PANEL_TOKEN) ||
+                   (env.ADMIN_PANEL_TOKEN && bearer === env.ADMIN_PANEL_TOKEN);
+    if (!authed) { reply.code(401); return { error: "Unauthorized" }; }
+    if (!minimaxConfig) { reply.code(503); return { error: "MiniMax not configured" }; }
+
+    try {
+      const input = (await import("@asashiki/schemas")).voiceMessageInputSchema.parse(request.body ?? {});
+      const audio = await synthesizeVoice(minimaxConfig, input.text);
+      const filename = `${randomUUID()}.mp3`;
+      nodeFs.writeFileSync(nodePath.join(voiceDir, filename), audio);
+      const row = repository.insertVoiceMessage({
+        deviceId: input.deviceId,
+        senderName: input.senderName,
+        senderAvatarUrl: input.senderAvatarUrl,
+        text: input.text,
+        audioFilename: filename,
+        durationMs: undefined
+      });
+      return { ok: true, id: row.id, audioBytes: audio.length, createdAt: row.createdAt };
+    } catch (e) {
+      reply.code(500);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  // Device polls this to fetch unplayed voice messages addressed to it.
+  server.get("/api/devices/voice-messages/pending", async (request, reply) => {
+    const identity = deviceAuth.resolve(request.headers.authorization);
+    if (!identity) { reply.code(401); return { error: "Invalid device token." }; }
+
+    // Build base URL from incoming request so the device can fetch the audio
+    const proto = (request.headers["x-forwarded-proto"] as string) ?? "https";
+    const host = (request.headers["x-forwarded-host"] as string) ?? request.headers.host ?? "";
+    const audioBaseUrl = `${proto}://${host}/voice`;
+
+    const messages = repository.getPendingVoiceMessages(identity.deviceId, audioBaseUrl);
+    return { fetchedAt: new Date().toISOString(), messages };
+  });
+
+  // Device acks: mark delivered (downloaded but not yet played)
+  server.post("/api/devices/voice-messages/:id/delivered", async (request, reply) => {
+    const identity = deviceAuth.resolve(request.headers.authorization);
+    if (!identity) { reply.code(401); return { error: "Invalid device token." }; }
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isFinite(id)) { reply.code(400); return { error: "bad id" }; }
+    repository.markVoiceMessageDelivered(id);
+    return { ok: true };
+  });
+
+  // Device acks: mark played
+  server.post("/api/devices/voice-messages/:id/played", async (request, reply) => {
+    const identity = deviceAuth.resolve(request.headers.authorization);
+    if (!identity) { reply.code(401); return { error: "Invalid device token." }; }
+    const id = Number((request.params as { id: string }).id);
+    if (!Number.isFinite(id)) { reply.code(400); return { error: "bad id" }; }
+    repository.markVoiceMessagePlayed(id);
+    return { ok: true };
   });
 
   server.get("/api/audit/recent", async () => repository.listRecentAudit());

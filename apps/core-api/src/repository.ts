@@ -917,6 +917,65 @@ export function createRepository(database: DatabaseSync) {
         total: points.length,
         points
       });
+    },
+
+    insertVoiceMessage(input: {
+      deviceId: string;
+      senderName: string;
+      senderAvatarUrl?: string;
+      text: string;
+      audioFilename: string;
+      durationMs?: number;
+    }) {
+      const now = new Date().toISOString();
+      const result = database.prepare(`
+        INSERT INTO voice_messages
+          (device_id, sender_name, sender_avatar_url, text, audio_filename, duration_ms, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        input.deviceId,
+        input.senderName,
+        input.senderAvatarUrl ?? null,
+        input.text,
+        input.audioFilename,
+        input.durationMs ?? null,
+        now
+      );
+      return { id: Number(result.lastInsertRowid), createdAt: now };
+    },
+
+    getPendingVoiceMessages(deviceId: string, audioBaseUrl: string) {
+      const rows = database.prepare(`
+        SELECT id, device_id, sender_name, sender_avatar_url, text, audio_filename,
+               duration_ms, created_at, delivered_at, played_at
+        FROM voice_messages
+        WHERE device_id = ? AND delivered_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT 20
+      `).all(deviceId) as JsonRow[];
+
+      return rows.map(r => ({
+        id: r.id as number,
+        deviceId: r.device_id as string,
+        senderName: r.sender_name as string,
+        senderAvatarUrl: (r.sender_avatar_url as string | null) ?? null,
+        text: r.text as string,
+        audioUrl: `${audioBaseUrl}/${r.audio_filename}`,
+        durationMs: (r.duration_ms as number | null) ?? null,
+        createdAt: r.created_at as string,
+        deliveredAt: (r.delivered_at as string | null) ?? null,
+        playedAt: (r.played_at as string | null) ?? null,
+      }));
+    },
+
+    markVoiceMessageDelivered(id: number) {
+      database.prepare(`UPDATE voice_messages SET delivered_at = ? WHERE id = ? AND delivered_at IS NULL`)
+        .run(new Date().toISOString(), id);
+    },
+
+    markVoiceMessagePlayed(id: number) {
+      database.prepare(`UPDATE voice_messages SET played_at = ? WHERE id = ?`)
+        .run(new Date().toISOString(), id);
     }
   };
 }

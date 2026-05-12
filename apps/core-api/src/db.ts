@@ -147,6 +147,25 @@ export function migrateDatabase(database: DatabaseSync) {
 
     CREATE INDEX IF NOT EXISTS idx_location_points_recorded
       ON device_location_points(recorded_at DESC);
+
+    CREATE TABLE IF NOT EXISTS voice_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      sender_avatar_url TEXT,
+      text TEXT NOT NULL,
+      audio_filename TEXT NOT NULL,
+      duration_ms INTEGER,
+      created_at TEXT NOT NULL,
+      delivered_at TEXT,
+      played_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_voice_msgs_device_pending
+      ON voice_messages(device_id, delivered_at);
+
+    CREATE INDEX IF NOT EXISTS idx_voice_msgs_created
+      ON voice_messages(created_at DESC);
   `);
 }
 

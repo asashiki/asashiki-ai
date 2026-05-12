@@ -837,6 +837,35 @@ export const steamPlayerSummarySchema = z.object({
 
 export type SteamPlayerSummary = z.infer<typeof steamPlayerSummarySchema>;
 
+// ─── Voice messages (AI → device push) ───────────────────────────────────────
+export const voiceMessageInputSchema = z.object({
+  deviceId: z.string().min(1).max(60),
+  senderName: z.string().min(1).max(60),
+  senderAvatarUrl: z.string().url().optional(),
+  text: z.string().min(1).max(5000)
+});
+export type VoiceMessageInput = z.infer<typeof voiceMessageInputSchema>;
+
+export const voiceMessageSchema = z.object({
+  id: z.number().int().nonnegative(),
+  deviceId: z.string(),
+  senderName: z.string(),
+  senderAvatarUrl: z.string().nullable(),
+  text: z.string(),
+  audioUrl: z.string(),
+  durationMs: z.number().int().nullable(),
+  createdAt: z.string(),
+  deliveredAt: z.string().nullable(),
+  playedAt: z.string().nullable()
+});
+export type VoiceMessage = z.infer<typeof voiceMessageSchema>;
+
+export const voiceMessagesPendingSchema = z.object({
+  fetchedAt: z.string(),
+  messages: z.array(voiceMessageSchema)
+});
+export type VoiceMessagesPending = z.infer<typeof voiceMessagesPendingSchema>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function createServiceHealth(

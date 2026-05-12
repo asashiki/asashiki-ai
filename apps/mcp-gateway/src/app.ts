@@ -15,7 +15,8 @@ export const mcpGatewayEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().positive().default(4200),
-  MCP_CORE_API_BASE_URL: z.string().url().default("http://127.0.0.1:4100")
+  MCP_CORE_API_BASE_URL: z.string().url().default("http://127.0.0.1:4100"),
+  MCP_CORE_API_ADMIN_TOKEN: z.string().optional()
 });
 
 export type McpGatewayEnv = z.infer<typeof mcpGatewayEnvSchema>;
@@ -32,7 +33,8 @@ export function loadMcpGatewayEnv(source: NodeJS.ProcessEnv): McpGatewayEnv {
   return mcpGatewayEnvSchema.parse(
     parseServiceEnv("mcp-gateway", normalizedSource, {
       PORT: z.coerce.number().int().positive().default(4200),
-      MCP_CORE_API_BASE_URL: z.string().url().default("http://127.0.0.1:4100")
+      MCP_CORE_API_BASE_URL: z.string().url().default("http://127.0.0.1:4100"),
+      MCP_CORE_API_ADMIN_TOKEN: z.string().optional()
     })
   );
 }
@@ -44,7 +46,7 @@ export async function createMcpGatewayApp(options?: {
 }) {
   const env = options?.env ?? loadMcpGatewayEnv(process.env);
   const startedAt = options?.startedAt ?? new Date();
-  const client = createCoreApiClient(env.MCP_CORE_API_BASE_URL);
+  const client = createCoreApiClient(env.MCP_CORE_API_BASE_URL, env.MCP_CORE_API_ADMIN_TOKEN);
 
   const manifest = serviceManifestSchema.parse({
     id: "mcp-gateway",
