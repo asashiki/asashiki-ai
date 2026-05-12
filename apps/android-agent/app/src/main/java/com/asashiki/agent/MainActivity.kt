@@ -113,32 +113,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AgentScreen(
-                        hcGranted = hcGrantedState.value,
-                        onRequestHcPermissions = { hcPermissionLauncher.launch(hcPermissions) },
-                        onOpenUsageSettings = {
-                            usageSettingsLauncher.launch(
-                                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                            )
-                        },
-                        onRefreshHcState = {
-                            checkHcPermissions()
-                        },
-                        onRequestForegroundLocation = {
-                            locationPermLauncher.launch(arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            ))
-                        },
-                        onRequestBackgroundLocation = {
-                            bgLocationPermLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                        },
-                        onRequestBatteryOptimizationIgnore = {
-                            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                data = Uri.parse("package:$packageName")
-                            })
-                        }
-                    )
+                    var showSettings by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                    if (showSettings) {
+                        AgentScreen(
+                            hcGranted = hcGrantedState.value,
+                            onRequestHcPermissions = { hcPermissionLauncher.launch(hcPermissions) },
+                            onOpenUsageSettings = {
+                                usageSettingsLauncher.launch(
+                                    Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                )
+                            },
+                            onRefreshHcState = { checkHcPermissions() },
+                            onRequestForegroundLocation = {
+                                locationPermLauncher.launch(arrayOf(
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                    Manifest.permission.ACCESS_COARSE_LOCATION
+                                ))
+                            },
+                            onRequestBackgroundLocation = {
+                                bgLocationPermLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                            },
+                            onRequestBatteryOptimizationIgnore = {
+                                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                })
+                            },
+                            onBack = { showSettings = false }
+                        )
+                    } else {
+                        ChatScreen(onOpenSettings = { showSettings = true })
+                    }
                 }
             }
         }
@@ -189,6 +193,7 @@ fun AgentScreen(
     onRequestForegroundLocation: () -> Unit = {},
     onRequestBackgroundLocation: () -> Unit = {},
     onRequestBatteryOptimizationIgnore: () -> Unit = {},
+    onBack: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -226,7 +231,16 @@ fun AgentScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("Asashiki Agent", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Asashiki Agent · 设置", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) {
+                Text("返回对话", fontSize = 13.sp)
+            }
+        }
 
         Spacer(Modifier.height(4.dp))
 

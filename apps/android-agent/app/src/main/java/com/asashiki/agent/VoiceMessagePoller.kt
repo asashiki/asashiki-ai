@@ -73,6 +73,17 @@ class VoiceMessagePoller(
         val cacheFile = File(VoicePlaybackService.cacheDir(context), "msg-${msg.id}.mp3")
         cacheFile.writeBytes(bytes)
 
+        // Persist to local history so ChatScreen can show it even if user swipes the notification
+        VoiceMessageStore(context).upsert(StoredVoiceMessage(
+            id = msg.id,
+            senderName = msg.senderName,
+            senderAvatarUrl = msg.senderAvatarUrl,
+            text = msg.text,
+            audioPath = cacheFile.absolutePath,
+            receivedAt = System.currentTimeMillis(),
+            played = false
+        ))
+
         // ACK delivered
         ApiReporter.markVoiceMessageAck(baseUrl, token, msg.id, "delivered")
 

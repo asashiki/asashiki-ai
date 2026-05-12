@@ -34,7 +34,8 @@ class VoicePlaybackService : Service() {
         val msgId = intent.getLongExtra(EXTRA_MESSAGE_ID, -1L)
         val audioPath = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return START_NOT_STICKY
         val notifId = intent.getIntExtra(EXTRA_NOTIFICATION_ID, -1)
-        if (msgId < 0 || notifId < 0) return START_NOT_STICKY
+        // notifId == -1 means "play from in-app UI, no notification to dismiss".
+        if (msgId < 0) return START_NOT_STICKY
 
         playAudio(msgId, notifId, audioPath)
         return START_NOT_STICKY
@@ -81,11 +82,14 @@ class VoicePlaybackService : Service() {
     }
 
     private fun dismissNotification(notifId: Int) {
+        if (notifId < 0) return // No notification to dismiss (played from in-app UI)
         val nm = getSystemService(NotificationManager::class.java)
         nm.cancel(notifId)
     }
 
     private fun ackPlayed(msgId: Long) {
+        // Update local history so ChatScreen reflects "played" state
+        VoiceMessageStore(this).markPlayed(msgId)
         val store = SettingsStore(this)
         val s = store.load()
         ackJob = scope.launch {
