@@ -73,3 +73,17 @@ VPS 生产更新固定使用：
 ```bash
 docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
 ```
+
+只更新单个服务时也必须带 `.env.production`，例如：
+
+```bash
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build core-api
+```
+
+不要使用不带 env-file 的生产命令，例如：
+
+```bash
+docker compose -f infra/docker/compose.yaml up -d --build core-api
+```
+
+原因：compose 默认会把端口绑定到 `127.0.0.1`。如果 `core-api` 显示为 `127.0.0.1:4100->4100/tcp`，本机 health 可能正常，但 `https://api.asashiki.com/console` 和外部设备上传会超时。生产上应看到 `0.0.0.0:4100->4100/tcp`。

@@ -87,6 +87,8 @@ VPS 项目路径：
 /opt/apps/asashiki-ai/asashiki-ai
 ```
 
+生产更新必须显式带 `.env.production`。不要省略 `--env-file .env.production`，否则 `CORE_API_BIND_HOST` / `MCP_GATEWAY_BIND_HOST` 会走 compose 默认值，服务可能重新变成只监听 `127.0.0.1`，表现为本机 `curl http://127.0.0.1:4100/health` 正常，但 `https://api.asashiki.com/console` 或外部设备上传超时。
+
 标准更新流程：
 
 ```bash
@@ -96,6 +98,21 @@ docker compose --env-file .env.production -f infra/docker/compose.yaml down
 docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build
 docker compose --env-file .env.production -f infra/docker/compose.yaml ps
 ```
+
+只重建 `core-api` 时也必须带 env-file：
+
+```bash
+cd /opt/apps/asashiki-ai/asashiki-ai
+docker compose --env-file .env.production -f infra/docker/compose.yaml up -d --build core-api
+```
+
+不要使用这个命令：
+
+```bash
+docker compose -f infra/docker/compose.yaml up -d --build core-api
+```
+
+上面这条缺少 `.env.production`，会把 `core-api` 端口发布成 `127.0.0.1:4100->4100/tcp`。
 
 健康检查：
 
