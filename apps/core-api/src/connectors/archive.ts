@@ -277,11 +277,11 @@ export function createArchiveClient(options: {
       lastSuccessAt: status.status === "online" ? status.checkedAt : null,
       lastError: status.lastError,
       capabilities: [
-        "read_archive_status",
-        "list_diary_entries",
-        "read_diary_entry",
-        "write_diary_entry",
-        "update_diary_entry"
+        "archive_status",
+        "diary_list",
+        "diary_read",
+        "diary_write",
+        "diary_update"
       ],
       exposureLevel: "private-personal"
     });

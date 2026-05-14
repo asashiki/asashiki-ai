@@ -44,23 +44,25 @@ Docker 中会只读挂载为：
 - `GET /api/archive/status`
 - `GET /api/archive/diary`
 - `GET /api/archive/diary/:date`
-- MCP 工具：`get_archive_status`
-- MCP 工具：`list_diary_entries`
-- MCP 工具：`read_diary_entry`
+- MCP 工具：`archive_status`
+- MCP 工具：`diary_list`
+- MCP 工具：`diary_read`
 
 ## 当前 MCP 工具
 
-`mcp-gateway` 暴露给 agent 的工具包括：
+`mcp-gateway` 暴露给 agent 的工具按域名前缀分组（命名规范见 `apps/mcp-gateway/README.md`）：
 
-- `read_profile_summary`
-- `get_recent_context`
-- `create_journal_draft`
-- `get_health_summary`
-- `get_connector_status`
-- `get_archive_status`
-- `list_diary_entries`
-- `read_diary_entry`
-- `lookup_time_log_at`
+- profile / context / journal：`profile_read_summary`、`context_recent`、`journal_create_draft`
+- archive：`archive_status`、`archive_list`、`archive_read`、`archive_write`、`archive_delete`、`archive_search`
+- diary：`diary_list`、`diary_read`、`diary_write`、`diary_update`、`diary_delete`
+- connector：`connector_status`
+- time log：`time_log_lookup`
+- device：`device_status`、`device_activity_summary`、`device_timeline`
+- health：`health_summary`、`health_metrics`、`health_records`
+- location / weather：`location_current`、`location_history`、`weather_current`
+- okx：`okx_balance`、`okx_positions`、`okx_assets`
+- steam：`steam_recent_games`、`steam_profile`
+- voice：`voice_send`
 
 ## 本地开发
 

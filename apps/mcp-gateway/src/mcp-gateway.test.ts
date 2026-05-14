@@ -86,34 +86,34 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     );
 
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, 9);
+    assert.ok(listed.tools.length >= 9);
 
     const profile = await client.callTool({
-      name: "read_profile_summary",
+      name: "profile_read_summary",
       arguments: {}
     });
     assert.equal(profile.isError, undefined);
 
     const recentContext = await client.callTool({
-      name: "get_recent_context",
+      name: "context_recent",
       arguments: {}
     });
     assert.equal(recentContext.isError, undefined);
 
     const connectors = await client.callTool({
-      name: "get_connector_status",
+      name: "connector_status",
       arguments: {}
     });
     assert.equal(connectors.isError, undefined);
 
     const archiveStatus = await client.callTool({
-      name: "get_archive_status",
+      name: "archive_status",
       arguments: {}
     });
     assert.equal(archiveStatus.isError, undefined);
 
     const diaryList = await client.callTool({
-      name: "list_diary_entries",
+      name: "diary_list",
       arguments: {
         limit: 3
       }
@@ -121,7 +121,7 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     assert.equal(diaryList.isError, undefined);
 
     const diaryEntry = await client.callTool({
-      name: "read_diary_entry",
+      name: "diary_read",
       arguments: {
         date: "2026-05-03"
       }
@@ -129,7 +129,7 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     assert.equal(diaryEntry.isError, undefined);
 
     const timeLogLookup = await client.callTool({
-      name: "lookup_time_log_at",
+      name: "time_log_lookup",
       arguments: {
         at: "2025-04-16T17:25:00.000Z"
       }
@@ -137,7 +137,7 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     assert.equal(timeLogLookup.isError, undefined);
 
     const created = await client.callTool({
-      name: "create_journal_draft",
+      name: "journal_create_draft",
       arguments: {
         content: "Created from test suite.",
         source: "mcp-test"

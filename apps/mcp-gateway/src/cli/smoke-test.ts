@@ -90,36 +90,36 @@ try {
   }
 
   const profile = await client.callTool({
-    name: "read_profile_summary",
+    name: "profile_read_summary",
     arguments: {}
   });
 
   const health = await client.callTool({
-    name: "get_health_summary",
+    name: "health_summary",
     arguments: {}
   });
 
   const timeLogLookup = await client.callTool({
-    name: "lookup_time_log_at",
+    name: "time_log_lookup",
     arguments: {
       at: new Date().toISOString()
     }
   });
 
   const archiveStatus = await client.callTool({
-    name: "get_archive_status",
+    name: "archive_status",
     arguments: {}
   });
 
   const diary = await client.callTool({
-    name: "read_diary_entry",
+    name: "diary_read",
     arguments: {
       date: "2026-05-03"
     }
   });
 
   const draft = await client.callTool({
-    name: "create_journal_draft",
+    name: "journal_create_draft",
     arguments: {
       title: "MCP smoke draft",
       content: "Created through MCP smoke validation.",

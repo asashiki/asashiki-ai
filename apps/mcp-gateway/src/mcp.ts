@@ -53,38 +53,41 @@ const connectorStatusOutputSchema = z.object({
   connectors: connectorSchema.array()
 });
 
+// Tool ID convention: <domain>_<action>.
+// Domain groups related capabilities so model selection is easier; action is the verb.
+// See apps/mcp-gateway/README.md for how to add a new tool.
 const mcpToolIds = [
-  "read_profile_summary",
-  "get_recent_context",
-  "create_journal_draft",
-  "get_health_summary",
-  "get_connector_status",
-  "get_archive_status",
-  "list_diary_entries",
-  "read_diary_entry",
-  "lookup_time_log_at",
-  "get_device_status",
-  "get_device_activity_summary",
-  "get_device_timeline",
-  "get_health_metrics",
-  "get_health_records",
-  "write_diary_entry",
-  "update_diary_entry",
-  "delete_diary_entry",
-  "read_archive_file",
-  "write_archive_file",
-  "delete_archive_file",
-  "list_archive_files",
-  "search_archive",
-  "get_okx_balance",
-  "get_okx_positions",
-  "get_okx_assets",
-  "get_steam_recent_games",
-  "get_steam_profile",
-  "send_voice_message",
-  "get_weather",
-  "get_current_location",
-  "get_location_history"
+  "profile_read_summary",
+  "context_recent",
+  "journal_create_draft",
+  "connector_status",
+  "archive_status",
+  "archive_list",
+  "archive_read",
+  "archive_write",
+  "archive_delete",
+  "archive_search",
+  "diary_list",
+  "diary_read",
+  "diary_write",
+  "diary_update",
+  "diary_delete",
+  "time_log_lookup",
+  "device_status",
+  "device_activity_summary",
+  "device_timeline",
+  "health_summary",
+  "health_metrics",
+  "health_records",
+  "location_current",
+  "location_history",
+  "weather_current",
+  "okx_balance",
+  "okx_positions",
+  "okx_assets",
+  "steam_recent_games",
+  "steam_profile",
+  "voice_send"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -93,295 +96,198 @@ export type McpToolId = z.infer<typeof mcpToolIdSchema>;
 
 export const mcpToolCatalog = mcpToolCatalogSchema.parse([
   {
-    id: "read_profile_summary",
+    id: "profile_read_summary",
     title: "Read Profile Summary",
-    description: "Read the stable profile summary curated by the Core API.",
+    description: "Stable profile summary curated by Core API.",
     readOnlyHint: true
   },
   {
-    id: "get_recent_context",
-    title: "Get Recent Context",
-    description:
-      "Return a compact context summary assembled from recent journals and safe status hints.",
+    id: "context_recent",
+    title: "Recent Context",
+    description: "Compact recent journals + safe status hints.",
     readOnlyHint: true
   },
   {
-    id: "create_journal_draft",
+    id: "journal_create_draft",
     title: "Create Journal Draft",
-    description:
-      "Create a journal draft through the Core API so storage and audit stay backend-governed.",
+    description: "Create a journal draft via Core API (audited).",
     readOnlyHint: false
   },
   {
-    id: "get_health_summary",
-    title: "Get Health Summary",
-    description:
-      "Read the latest safe health summary without exposing raw personal history.",
+    id: "connector_status",
+    title: "Connector Status",
+    description: "Connector summary and per-connector state.",
     readOnlyHint: true
   },
   {
-    id: "get_connector_status",
-    title: "Get Connector Status",
-    description:
-      "Return connector summary plus current connector states curated by the Core API.",
+    id: "archive_status",
+    title: "Archive Status",
+    description: "Check if Archive and diary folder are readable.",
     readOnlyHint: true
   },
   {
-    id: "get_archive_status",
-    title: "Get Archive Status",
-    description:
-      "Check whether the VPS-mounted Asashiki Archive and diary folder are readable.",
-    readOnlyHint: true
-  },
-  {
-    id: "list_diary_entries",
-    title: "List Diary Entries",
-    description:
-      "List recent Markdown diary entries from the VPS-mounted Asashiki Archive.",
-    readOnlyHint: true
-  },
-  {
-    id: "read_diary_entry",
-    title: "Read Diary Entry",
-    description:
-      "Read one Markdown diary file from the Asashiki Archive by date using YYYY-MM-DD.",
-    readOnlyHint: true
-  },
-  {
-    id: "lookup_time_log_at",
-    title: "Lookup Time Log At",
-    description:
-      "Look up the Supabase-backed time log around a specific timestamp through the Core API.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_device_status",
-    title: "Get Device Status",
-    description:
-      "Return the current state of all registered devices (phone, desktop, etc.) including the active app, battery, network, and last-seen time.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_device_activity_summary",
-    title: "Get Device Activity Summary",
-    description:
-      "Return a per-app usage summary for a given date (default: today). Shows total minutes and launch count per app across all devices.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_health_metrics",
-    title: "Get Health Metrics",
-    description:
-      "Query raw health records uploaded from HealthConnect (heart rate, steps, sleep, etc.). Supports filtering by type, date range, and device.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_device_timeline",
-    title: "Get Device Activity Timeline",
-    description:
-      "Return the chronological app-switch timeline for a given date (default: today). Shows each foreground app period with start/end times.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_health_records",
-    title: "Get Health Records",
-    description:
-      "Query raw health records from HealthConnect by type and/or date range. Returns individual timestamped measurements (e.g. every heart rate sample).",
-    readOnlyHint: true
-  },
-  {
-    id: "write_diary_entry",
-    title: "Write Diary Entry",
-    description:
-      "Create a new Markdown diary file in the Archive (YYYY-MM-DD.md). Fails if the file already exists unless overwrite=true.",
-    readOnlyHint: false
-  },
-  {
-    id: "update_diary_entry",
-    title: "Update Diary Entry",
-    description:
-      "Update an existing diary entry in the Archive. Supports replace (overwrite full content) or append (add to end).",
-    readOnlyHint: false
-  },
-  {
-    id: "delete_diary_entry",
-    title: "Delete Diary Entry",
-    description: "Permanently delete a diary entry file from the Archive by date (YYYY-MM-DD).",
-    readOnlyHint: false
-  },
-  {
-    id: "read_archive_file",
-    title: "Read Archive File",
-    description:
-      "Read any Markdown or text file in the Archive by relative path (e.g. '关于我/profile.md', '主题/某主题.md'). Use list_archive_files to discover available paths.",
-    readOnlyHint: true
-  },
-  {
-    id: "write_archive_file",
-    title: "Write Archive File",
-    description:
-      "Create or overwrite any file in the Archive by relative path. Use this to update profile.md, role cards, topic notes, etc.",
-    readOnlyHint: false
-  },
-  {
-    id: "list_archive_files",
+    id: "archive_list",
     title: "List Archive Files",
-    description:
-      "List files and subdirectories within an Archive directory. Call with no arguments to see the top-level structure, or pass dir to drill down.",
+    description: "List files/subdirs in an Archive directory.",
     readOnlyHint: true
   },
   {
-    id: "delete_archive_file",
+    id: "archive_read",
+    title: "Read Archive File",
+    description: "Read any Archive Markdown/text file by relative path.",
+    readOnlyHint: true
+  },
+  {
+    id: "archive_write",
+    title: "Write Archive File",
+    description: "Create or overwrite an Archive file by relative path.",
+    readOnlyHint: false
+  },
+  {
+    id: "archive_delete",
     title: "Delete Archive File",
-    description: "Permanently delete any file in the Archive by relative path.",
+    description: "Permanently delete an Archive file by relative path.",
     readOnlyHint: false
   },
   {
-    id: "get_okx_balance",
-    title: "Get OKX Account Balance",
-    description:
-      "Return the trading account total equity (USD) and per-currency holdings from OKX. Read-only, IP-restricted.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_okx_positions",
-    title: "Get OKX Open Positions",
-    description:
-      "Return all open futures/perpetual positions on OKX including entry price, mark price, unrealized PnL, and leverage.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_okx_assets",
-    title: "Get OKX Funding Account Assets",
-    description:
-      "Return the funding account (资金账户) asset balances on OKX. Separate from the trading account.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_current_location",
-    title: "Get Current Location",
-    description:
-      "Return the latest GPS location for each registered device. Includes coordinates, accuracy, speed, and timestamp. Requires location tracking enabled on the Android app.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_location_history",
-    title: "Get Location History",
-    description:
-      "Return a chronological trail of location points. Optionally filter by deviceId, from/to timestamps (ISO8601), and limit. Useful for reconstructing commute routes or understanding movement patterns.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_weather",
-    title: "Get Current Weather",
-    description:
-      "Return current weather and 4-day forecast for the configured location (default: 嘉兴). Includes temperature, humidity, wind speed, precipitation, and WMO weather description in Chinese.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_steam_recent_games",
-    title: "Get Steam Recently Played Games",
-    description:
-      "Return games played in the last 2 weeks from Steam, including playtime in minutes. Also shows all-time playtime per game.",
-    readOnlyHint: true
-  },
-  {
-    id: "get_steam_profile",
-    title: "Get Steam Player Profile",
-    description:
-      "Return the Steam player profile including display name, online status, current game being played, and last seen time.",
-    readOnlyHint: true
-  },
-  {
-    id: "send_voice_message",
-    title: "Send Voice Message to Phone",
-    description:
-      "Send a TTS voice bubble notification to the user's Android phone. The text is synthesized via MiniMax (温柔的女性声音) and delivered as a heads-up notification — tap once to play. Use sparingly, only when a quick spoken update genuinely beats text. Required: deviceId (e.g. 'android-phone'), senderName (your AI name like 'Claude' / 'Codex'), text (1-300 chars Chinese works best). Optional: senderAvatarUrl.",
-    readOnlyHint: false
-  },
-  {
-    id: "search_archive",
+    id: "archive_search",
     title: "Search Archive",
-    description:
-      "Full-text search across all Markdown and text files in the Archive. Optionally scope to a subdirectory (e.g. dir='Obsidian_Asashiki/日记' for diary only). Returns up to 20 matching excerpts.",
+    description: "Full-text search across Archive Markdown/text files.",
     readOnlyHint: true
+  },
+  {
+    id: "diary_list",
+    title: "List Diary Entries",
+    description: "List recent diary entries from the Archive.",
+    readOnlyHint: true
+  },
+  {
+    id: "diary_read",
+    title: "Read Diary Entry",
+    description: "Read one diary entry by YYYY-MM-DD.",
+    readOnlyHint: true
+  },
+  {
+    id: "diary_write",
+    title: "Write Diary Entry",
+    description: "Create a new diary entry (YYYY-MM-DD.md).",
+    readOnlyHint: false
+  },
+  {
+    id: "diary_update",
+    title: "Update Diary Entry",
+    description: "Update an existing diary entry (replace or append).",
+    readOnlyHint: false
+  },
+  {
+    id: "diary_delete",
+    title: "Delete Diary Entry",
+    description: "Permanently delete a diary entry by date.",
+    readOnlyHint: false
+  },
+  {
+    id: "time_log_lookup",
+    title: "Lookup Time Log",
+    description: "Look up the time log around a specific timestamp.",
+    readOnlyHint: true
+  },
+  {
+    id: "device_status",
+    title: "Device Status",
+    description: "Current state of all registered devices.",
+    readOnlyHint: true
+  },
+  {
+    id: "device_activity_summary",
+    title: "Device Activity Summary",
+    description: "Per-app usage summary for a given date.",
+    readOnlyHint: true
+  },
+  {
+    id: "device_timeline",
+    title: "Device Activity Timeline",
+    description: "Chronological app-switch timeline for a given date.",
+    readOnlyHint: true
+  },
+  {
+    id: "health_summary",
+    title: "Health Summary",
+    description: "Latest safe health summary (no raw history).",
+    readOnlyHint: true
+  },
+  {
+    id: "health_metrics",
+    title: "Health Metrics",
+    description: "Query raw HealthConnect records.",
+    readOnlyHint: true
+  },
+  {
+    id: "health_records",
+    title: "Health Records",
+    description: "Query raw HealthConnect records by type/date.",
+    readOnlyHint: true
+  },
+  {
+    id: "location_current",
+    title: "Current Location",
+    description: "Latest GPS location per registered device.",
+    readOnlyHint: true
+  },
+  {
+    id: "location_history",
+    title: "Location History",
+    description: "Chronological location trail, optionally filtered.",
+    readOnlyHint: true
+  },
+  {
+    id: "weather_current",
+    title: "Current Weather",
+    description: "Current weather and 4-day forecast.",
+    readOnlyHint: true
+  },
+  {
+    id: "okx_balance",
+    title: "OKX Trading Balance",
+    description: "OKX trading account equity and holdings.",
+    readOnlyHint: true
+  },
+  {
+    id: "okx_positions",
+    title: "OKX Open Positions",
+    description: "OKX open futures/perpetual positions.",
+    readOnlyHint: true
+  },
+  {
+    id: "okx_assets",
+    title: "OKX Funding Assets",
+    description: "OKX funding account asset balances.",
+    readOnlyHint: true
+  },
+  {
+    id: "steam_recent_games",
+    title: "Steam Recent Games",
+    description: "Steam games played in the last 2 weeks.",
+    readOnlyHint: true
+  },
+  {
+    id: "steam_profile",
+    title: "Steam Profile",
+    description: "Steam profile, online status, current game.",
+    readOnlyHint: true
+  },
+  {
+    id: "voice_send",
+    title: "Send Voice Message",
+    description: "Send a TTS voice notification to the Android phone.",
+    readOnlyHint: false
   }
 ]);
 
-const readProfileTool = mcpToolCatalog.find(
-  (tool) => tool.id === "read_profile_summary"
-)!;
-const recentContextTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_recent_context"
-)!;
-const createDraftTool = mcpToolCatalog.find(
-  (tool) => tool.id === "create_journal_draft"
-)!;
-const healthSummaryTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_health_summary"
-)!;
-const connectorStatusTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_connector_status"
-)!;
-const archiveStatusTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_archive_status"
-)!;
-const listDiaryEntriesTool = mcpToolCatalog.find(
-  (tool) => tool.id === "list_diary_entries"
-)!;
-const readDiaryEntryTool = mcpToolCatalog.find(
-  (tool) => tool.id === "read_diary_entry"
-)!;
-const lookupTimeLogTool = mcpToolCatalog.find(
-  (tool) => tool.id === "lookup_time_log_at"
-)!;
-const getDeviceStatusTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_device_status"
-)!;
-const getDeviceActivitySummaryTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_device_activity_summary"
-)!;
-const getHealthMetricsTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_health_metrics"
-)!;
-const writeDiaryEntryTool = mcpToolCatalog.find(
-  (tool) => tool.id === "write_diary_entry"
-)!;
-const updateDiaryEntryTool = mcpToolCatalog.find(
-  (tool) => tool.id === "update_diary_entry"
-)!;
-const deleteDiaryEntryTool = mcpToolCatalog.find(
-  (tool) => tool.id === "delete_diary_entry"
-)!;
-const getDeviceTimelineTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_device_timeline"
-)!;
-const getHealthRecordsTool = mcpToolCatalog.find(
-  (tool) => tool.id === "get_health_records"
-)!;
-const readArchiveFileTool = mcpToolCatalog.find(
-  (tool) => tool.id === "read_archive_file"
-)!;
-const writeArchiveFileTool = mcpToolCatalog.find(
-  (tool) => tool.id === "write_archive_file"
-)!;
-const listArchiveFilesTool = mcpToolCatalog.find(
-  (tool) => tool.id === "list_archive_files"
-)!;
-const deleteArchiveFileTool = mcpToolCatalog.find(
-  (tool) => tool.id === "delete_archive_file"
-)!;
-const searchArchiveTool = mcpToolCatalog.find(
-  (tool) => tool.id === "search_archive"
-)!;
-const getOkxBalanceTool = mcpToolCatalog.find((t) => t.id === "get_okx_balance")!;
-const getOkxPositionsTool = mcpToolCatalog.find((t) => t.id === "get_okx_positions")!;
-const getOkxAssetsTool = mcpToolCatalog.find((t) => t.id === "get_okx_assets")!;
-const getCurrentLocationTool = mcpToolCatalog.find((t) => t.id === "get_current_location")!;
-const getLocationHistoryTool = mcpToolCatalog.find((t) => t.id === "get_location_history")!;
-const getWeatherTool = mcpToolCatalog.find((t) => t.id === "get_weather")!;
-const getSteamRecentGamesTool = mcpToolCatalog.find((t) => t.id === "get_steam_recent_games")!;
-const getSteamProfileTool = mcpToolCatalog.find((t) => t.id === "get_steam_profile")!;
+function tool(id: McpToolId) {
+  const entry = mcpToolCatalog.find((t) => t.id === id);
+  if (!entry) throw new Error(`Missing catalog entry: ${id}`);
+  return entry;
+}
 
 export function createMcpGatewayServer(client: CoreApiClient) {
   const server = new McpServer(
@@ -395,147 +301,163 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
+  // ───────────── profile / context / journal ─────────────
+
   server.registerTool(
-    "read_profile_summary",
+    "profile_read_summary",
     {
-      title: readProfileTool.title,
-      description: readProfileTool.description,
+      title: tool("profile_read_summary").title,
+      description: tool("profile_read_summary").description,
       inputSchema: z.object({}),
       outputSchema: profileSummarySchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async () => {
       const output = await client.getProfileSummary();
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
-        ],
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output
       };
     }
   );
 
   server.registerTool(
-    "get_recent_context",
+    "context_recent",
     {
-      title: recentContextTool.title,
-      description: recentContextTool.description,
+      title: tool("context_recent").title,
+      description: tool("context_recent").description,
       inputSchema: z.object({}),
       outputSchema: recentContextSchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async () => {
       const output = await client.getRecentContext();
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
-        ],
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output
       };
     }
   );
 
   server.registerTool(
-    "create_journal_draft",
+    "journal_create_draft",
     {
-      title: createDraftTool.title,
-      description: createDraftTool.description,
+      title: tool("journal_create_draft").title,
+      description: tool("journal_create_draft").description,
       inputSchema: journalDraftInputSchema,
-      outputSchema: journalDraftSavedSchema
+      outputSchema: journalDraftSavedSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      }
     },
     async (input: z.infer<typeof journalDraftInputSchema>) => {
       const output = await client.createJournalDraft(input);
       return {
         content: [
-          {
-            type: "text",
-            text: `Created journal draft ${output.id} (${output.title}).`
-          }
+          { type: "text", text: `Created journal draft ${output.id} (${output.title}).` }
         ],
         structuredContent: output
       };
     }
   );
 
-  server.registerTool(
-    "get_health_summary",
-    {
-      title: healthSummaryTool.title,
-      description: healthSummaryTool.description,
-      inputSchema: z.object({}),
-      outputSchema: healthSummarySchema,
-      annotations: {
-        readOnlyHint: true
-      }
-    },
-    async () => {
-      const output = await client.getHealthSummary();
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
-        ],
-        structuredContent: output
-      };
-    }
-  );
+  // ───────────── connector / archive ─────────────
 
   server.registerTool(
-    "get_connector_status",
+    "connector_status",
     {
-      title: connectorStatusTool.title,
-      description: connectorStatusTool.description,
+      title: tool("connector_status").title,
+      description: tool("connector_status").description,
       inputSchema: z.object({}),
       outputSchema: connectorStatusOutputSchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async () => {
       const output = await client.getConnectorStatus();
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
-        ],
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output
       };
     }
   );
 
   server.registerTool(
-    "get_archive_status",
+    "archive_status",
     {
-      title: archiveStatusTool.title,
-      description: archiveStatusTool.description,
+      title: tool("archive_status").title,
+      description: tool("archive_status").description,
       inputSchema: z.object({}),
       outputSchema: archiveStatusSchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async () => {
       const output = await client.getArchiveStatus();
       return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "archive_list",
+    {
+      title: tool("archive_list").title,
+      description: tool("archive_list").description,
+      inputSchema: archiveFileListInputSchema,
+      outputSchema: archiveFileListResultSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof archiveFileListInputSchema>) => {
+      const output = await client.listArchiveFiles(input);
+      const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
+      return {
+        content: [{ type: "text", text: summary || "Empty directory." }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "archive_read",
+    {
+      title: tool("archive_read").title,
+      description: tool("archive_read").description,
+      inputSchema: archiveFileReadInputSchema,
+      outputSchema: archiveFileResultSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof archiveFileReadInputSchema>) => {
+      const output = await client.readArchiveFile(input);
+      return {
+        content: [{ type: "text", text: output.content }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "archive_write",
+    {
+      title: tool("archive_write").title,
+      description: tool("archive_write").description,
+      inputSchema: archiveFileWriteInputSchema,
+      outputSchema: archiveFileWriteResultSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false
+      }
+    },
+    async (input: z.infer<typeof archiveFileWriteInputSchema>) => {
+      const output = await client.writeArchiveFile(input);
+      return {
         content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
+          { type: "text", text: `${output.mode === "create" ? "Created" : "Updated"} ${output.path} (${output.size} bytes).` }
         ],
         structuredContent: output
       };
@@ -543,51 +465,108 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "list_diary_entries",
+    "archive_delete",
     {
-      title: listDiaryEntriesTool.title,
-      description: listDiaryEntriesTool.description,
+      title: tool("archive_delete").title,
+      description: tool("archive_delete").description,
+      inputSchema: archiveFileDeleteInputSchema,
+      outputSchema: archiveFileDeleteResultSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async (input: z.infer<typeof archiveFileDeleteInputSchema>) => {
+      const output = await client.deleteArchiveFile(input);
+      return {
+        content: [
+          { type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "archive_search",
+    {
+      title: tool("archive_search").title,
+      description: tool("archive_search").description,
+      inputSchema: archiveSearchInputSchema,
+      outputSchema: archiveSearchResultSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof archiveSearchInputSchema>) => {
+      const output = await client.searchArchive(input);
+      const preview = output.hits.map((h) => `[${h.path}] ${h.excerpt}`).join("\n\n");
+      return {
+        content: [{ type: "text", text: preview || `No results for "${output.query}".` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  // ───────────── diary ─────────────
+
+  server.registerTool(
+    "diary_list",
+    {
+      title: tool("diary_list").title,
+      description: tool("diary_list").description,
       inputSchema: z.object({
         limit: z.number().int().positive().max(50).optional()
       }),
       outputSchema: archiveDiaryListSchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async (input: { limit?: number }) => {
       const output = await client.listDiaryEntries(input.limit ?? 20);
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
-        ],
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output
       };
     }
   );
 
   server.registerTool(
-    "read_diary_entry",
+    "diary_read",
     {
-      title: readDiaryEntryTool.title,
-      description: readDiaryEntryTool.description,
+      title: tool("diary_read").title,
+      description: tool("diary_read").description,
       inputSchema: archiveDiaryReadInputSchema,
       outputSchema: archiveDiaryEntrySchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async (input: z.infer<typeof archiveDiaryReadInputSchema>) => {
       const output = await client.readDiaryEntry(input);
       return {
+        content: [{ type: "text", text: output.content }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "diary_write",
+    {
+      title: tool("diary_write").title,
+      description: tool("diary_write").description,
+      inputSchema: diaryWriteInputSchema,
+      outputSchema: diaryWriteResultSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false
+      }
+    },
+    async (input: z.infer<typeof diaryWriteInputSchema>) => {
+      const output = await client.writeDiaryEntry(input);
+      return {
         content: [
-          {
-            type: "text",
-            text: output.content
-          }
+          { type: "text", text: `Diary entry ${output.date} written (${output.mode}, ${output.bytesWritten} bytes).` }
         ],
         structuredContent: output
       };
@@ -595,35 +574,80 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "lookup_time_log_at",
+    "diary_update",
     {
-      title: lookupTimeLogTool.title,
-      description: lookupTimeLogTool.description,
+      title: tool("diary_update").title,
+      description: tool("diary_update").description,
+      inputSchema: diaryUpdateInputSchema,
+      outputSchema: diaryWriteResultSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false
+      }
+    },
+    async (input: z.infer<typeof diaryUpdateInputSchema>) => {
+      const output = await client.updateDiaryEntry(input);
+      return {
+        content: [
+          { type: "text", text: `Diary entry ${output.date} updated (${output.mode}, ${output.bytesWritten} bytes).` }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "diary_delete",
+    {
+      title: tool("diary_delete").title,
+      description: tool("diary_delete").description,
+      inputSchema: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
+      outputSchema: diaryDeleteResultSchema,
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false
+      }
+    },
+    async (input: { date: string }) => {
+      const output = await client.deleteDiaryEntry(input.date);
+      return {
+        content: [
+          { type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }
+        ],
+        structuredContent: output
+      };
+    }
+  );
+
+  // ───────────── time log / device / health ─────────────
+
+  server.registerTool(
+    "time_log_lookup",
+    {
+      title: tool("time_log_lookup").title,
+      description: tool("time_log_lookup").description,
       inputSchema: timeLogLookupInputSchema,
       outputSchema: timeLogLookupResultSchema,
-      annotations: {
-        readOnlyHint: true
-      }
+      annotations: { readOnlyHint: true }
     },
     async (input: z.infer<typeof timeLogLookupInputSchema>) => {
       const output = await client.lookupTimeLogAt(input);
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(output, null, 2)
-          }
-        ],
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
         structuredContent: output
       };
     }
   );
 
   server.registerTool(
-    "get_device_status",
+    "device_status",
     {
-      title: getDeviceStatusTool.title,
-      description: getDeviceStatusTool.description,
+      title: tool("device_status").title,
+      description: tool("device_status").description,
       inputSchema: z.object({}),
       outputSchema: deviceCurrentSchema,
       annotations: { readOnlyHint: true }
@@ -638,10 +662,10 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "get_device_activity_summary",
+    "device_activity_summary",
     {
-      title: getDeviceActivitySummaryTool.title,
-      description: getDeviceActivitySummaryTool.description,
+      title: tool("device_activity_summary").title,
+      description: tool("device_activity_summary").description,
       inputSchema: z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
       }),
@@ -658,10 +682,47 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "get_health_metrics",
+    "device_timeline",
     {
-      title: getHealthMetricsTool.title,
-      description: getHealthMetricsTool.description,
+      title: tool("device_timeline").title,
+      description: tool("device_timeline").description,
+      inputSchema: deviceTimelineInputSchema,
+      outputSchema: deviceTimelineSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof deviceTimelineInputSchema>) => {
+      const output = await client.getDeviceTimeline(input);
+      const count = output.activities?.length ?? 0;
+      return {
+        content: [{ type: "text", text: `Device timeline for ${output.date}: ${count} activity records.` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "health_summary",
+    {
+      title: tool("health_summary").title,
+      description: tool("health_summary").description,
+      inputSchema: z.object({}),
+      outputSchema: healthSummarySchema,
+      annotations: { readOnlyHint: true }
+    },
+    async () => {
+      const output = await client.getHealthSummary();
+      return {
+        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "health_metrics",
+    {
+      title: tool("health_metrics").title,
+      description: tool("health_metrics").description,
       inputSchema: healthRecordsQueryInputSchema,
       outputSchema: healthRecordsQuerySchema,
       annotations: { readOnlyHint: true }
@@ -676,184 +737,13 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "write_diary_entry",
+    "health_records",
     {
-      title: writeDiaryEntryTool.title,
-      description: writeDiaryEntryTool.description,
-      inputSchema: diaryWriteInputSchema,
-      outputSchema: diaryWriteResultSchema
-    },
-    async (input: z.infer<typeof diaryWriteInputSchema>) => {
-      const output = await client.writeDiaryEntry(input);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Diary entry ${output.date} written (${output.mode}, ${output.bytesWritten} bytes).`
-          }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "update_diary_entry",
-    {
-      title: updateDiaryEntryTool.title,
-      description: updateDiaryEntryTool.description,
-      inputSchema: diaryUpdateInputSchema,
-      outputSchema: diaryWriteResultSchema
-    },
-    async (input: z.infer<typeof diaryUpdateInputSchema>) => {
-      const output = await client.updateDiaryEntry(input);
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Diary entry ${output.date} updated (${output.mode}, ${output.bytesWritten} bytes).`
-          }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "get_okx_balance",
-    {
-      title: getOkxBalanceTool.title,
-      description: getOkxBalanceTool.description,
-      inputSchema: z.object({}),
-      outputSchema: okxAccountBalanceSchema
-    },
-    async () => {
-      const output = await client.getOkxBalance();
-      const top = output.holdings.slice(0, 3).map((h) => `${h.currency}=${h.valueUsd.toFixed(0)}U`).join(" ");
-      return {
-        content: [{ type: "text", text: `总权益: $${output.totalEquityUsd.toFixed(2)} | ${top}` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "get_okx_positions",
-    {
-      title: getOkxPositionsTool.title,
-      description: getOkxPositionsTool.description,
-      inputSchema: z.object({}),
-      outputSchema: okxPositionsSchema
-    },
-    async () => {
-      const output = await client.getOkxPositions();
-      const summary = output.positions.length === 0
-        ? "当前无持仓。"
-        : output.positions.map((p) => `${p.instrument} ${p.side} PnL=${p.unrealizedPnl.toFixed(2)}U`).join("\n");
-      return {
-        content: [{ type: "text", text: summary }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "get_okx_assets",
-    {
-      title: getOkxAssetsTool.title,
-      description: getOkxAssetsTool.description,
-      inputSchema: z.object({}),
-      outputSchema: okxAssetBalancesSchema
-    },
-    async () => {
-      const output = await client.getOkxAssets();
-      const summary = output.assets.length === 0
-        ? "资金账户为空。"
-        : output.assets.map((a) => `${a.currency}: ${a.balance}`).join(", ");
-      return {
-        content: [{ type: "text", text: summary }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "delete_archive_file",
-    {
-      title: deleteArchiveFileTool.title,
-      description: deleteArchiveFileTool.description,
-      inputSchema: archiveFileDeleteInputSchema,
-      outputSchema: archiveFileDeleteResultSchema
-    },
-    async (input: z.infer<typeof archiveFileDeleteInputSchema>) => {
-      const output = await client.deleteArchiveFile(input);
-      return {
-        content: [{ type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "search_archive",
-    {
-      title: searchArchiveTool.title,
-      description: searchArchiveTool.description,
-      inputSchema: archiveSearchInputSchema,
-      outputSchema: archiveSearchResultSchema
-    },
-    async (input: z.infer<typeof archiveSearchInputSchema>) => {
-      const output = await client.searchArchive(input);
-      const preview = output.hits.map((h) => `[${h.path}] ${h.excerpt}`).join("\n\n");
-      return {
-        content: [{ type: "text", text: preview || `No results for "${output.query}".` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "delete_diary_entry",
-    {
-      title: deleteDiaryEntryTool.title,
-      description: deleteDiaryEntryTool.description,
-      inputSchema: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-      outputSchema: diaryDeleteResultSchema
-    },
-    async (input: { date: string }) => {
-      const output = await client.deleteDiaryEntry(input.date);
-      return {
-        content: [{ type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "get_device_timeline",
-    {
-      title: getDeviceTimelineTool.title,
-      description: getDeviceTimelineTool.description,
-      inputSchema: deviceTimelineInputSchema,
-      outputSchema: deviceTimelineSchema
-    },
-    async (input: z.infer<typeof deviceTimelineInputSchema>) => {
-      const output = await client.getDeviceTimeline(input);
-      const count = output.activities?.length ?? 0;
-      return {
-        content: [{ type: "text", text: `Device timeline for ${output.date}: ${count} activity records.` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "get_health_records",
-    {
-      title: getHealthRecordsTool.title,
-      description: getHealthRecordsTool.description,
+      title: tool("health_records").title,
+      description: tool("health_records").description,
       inputSchema: healthRecordsQueryInputSchema,
-      outputSchema: healthRecordsQuerySchema
+      outputSchema: healthRecordsQuerySchema,
+      annotations: { readOnlyHint: true }
     },
     async (input: z.infer<typeof healthRecordsQueryInputSchema>) => {
       const output = await client.getHealthRecords(input);
@@ -864,63 +754,13 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
-    "read_archive_file",
-    {
-      title: readArchiveFileTool.title,
-      description: readArchiveFileTool.description,
-      inputSchema: archiveFileReadInputSchema,
-      outputSchema: archiveFileResultSchema
-    },
-    async (input: z.infer<typeof archiveFileReadInputSchema>) => {
-      const output = await client.readArchiveFile(input);
-      return {
-        content: [{ type: "text", text: output.content }],
-        structuredContent: output
-      };
-    }
-  );
+  // ───────────── location / weather ─────────────
 
   server.registerTool(
-    "write_archive_file",
+    "location_current",
     {
-      title: writeArchiveFileTool.title,
-      description: writeArchiveFileTool.description,
-      inputSchema: archiveFileWriteInputSchema,
-      outputSchema: archiveFileWriteResultSchema
-    },
-    async (input: z.infer<typeof archiveFileWriteInputSchema>) => {
-      const output = await client.writeArchiveFile(input);
-      return {
-        content: [{ type: "text", text: `${output.mode === "create" ? "Created" : "Updated"} ${output.path} (${output.size} bytes).` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "list_archive_files",
-    {
-      title: listArchiveFilesTool.title,
-      description: listArchiveFilesTool.description,
-      inputSchema: archiveFileListInputSchema,
-      outputSchema: archiveFileListResultSchema
-    },
-    async (input: z.infer<typeof archiveFileListInputSchema>) => {
-      const output = await client.listArchiveFiles(input);
-      const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
-      return {
-        content: [{ type: "text", text: summary || "Empty directory." }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "get_current_location",
-    {
-      title: getCurrentLocationTool.title,
-      description: getCurrentLocationTool.description,
+      title: tool("location_current").title,
+      description: tool("location_current").description,
       inputSchema: z.object({}),
       outputSchema: locationCurrentSchema,
       annotations: { readOnlyHint: true }
@@ -941,10 +781,10 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "get_location_history",
+    "location_history",
     {
-      title: getLocationHistoryTool.title,
-      description: getLocationHistoryTool.description,
+      title: tool("location_history").title,
+      description: tool("location_history").description,
       inputSchema: locationHistoryQueryInputSchema,
       outputSchema: locationHistorySchema,
       annotations: { readOnlyHint: true }
@@ -962,13 +802,13 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "get_weather",
+    "weather_current",
     {
-      title: getWeatherTool.title,
-      description: getWeatherTool.description,
+      title: tool("weather_current").title,
+      description: tool("weather_current").description,
       inputSchema: z.object({}),
       outputSchema: weatherSchema,
-      annotations: { readOnlyHint: true }
+      annotations: { readOnlyHint: true, openWorldHint: true }
     },
     async () => {
       const output = await client.getWeather();
@@ -985,14 +825,79 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
+  // ───────────── okx ─────────────
+
   server.registerTool(
-    "get_steam_recent_games",
+    "okx_balance",
     {
-      title: getSteamRecentGamesTool.title,
-      description: getSteamRecentGamesTool.description,
+      title: tool("okx_balance").title,
+      description: tool("okx_balance").description,
+      inputSchema: z.object({}),
+      outputSchema: okxAccountBalanceSchema,
+      annotations: { readOnlyHint: true, openWorldHint: true }
+    },
+    async () => {
+      const output = await client.getOkxBalance();
+      const top = output.holdings.slice(0, 3).map((h) => `${h.currency}=${(h.valueUsd ?? 0).toFixed(0)}U`).join(" ");
+      return {
+        content: [{ type: "text", text: `总权益: $${output.totalEquityUsd.toFixed(2)} | ${top}` }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "okx_positions",
+    {
+      title: tool("okx_positions").title,
+      description: tool("okx_positions").description,
+      inputSchema: z.object({}),
+      outputSchema: okxPositionsSchema,
+      annotations: { readOnlyHint: true, openWorldHint: true }
+    },
+    async () => {
+      const output = await client.getOkxPositions();
+      const summary = output.positions.length === 0
+        ? "当前无持仓。"
+        : output.positions.map((p) => `${p.instrument} ${p.side} PnL=${p.unrealizedPnl.toFixed(2)}U`).join("\n");
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
+    "okx_assets",
+    {
+      title: tool("okx_assets").title,
+      description: tool("okx_assets").description,
+      inputSchema: z.object({}),
+      outputSchema: okxAssetBalancesSchema,
+      annotations: { readOnlyHint: true, openWorldHint: true }
+    },
+    async () => {
+      const output = await client.getOkxAssets();
+      const summary = output.assets.length === 0
+        ? "资金账户为空。"
+        : output.assets.map((a) => `${a.currency}: ${a.balance}`).join(", ");
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  // ───────────── steam ─────────────
+
+  server.registerTool(
+    "steam_recent_games",
+    {
+      title: tool("steam_recent_games").title,
+      description: tool("steam_recent_games").description,
       inputSchema: z.object({}),
       outputSchema: steamRecentGamesSchema,
-      annotations: { readOnlyHint: true }
+      annotations: { readOnlyHint: true, openWorldHint: true }
     },
     async () => {
       const output = await client.getSteamRecentGames();
@@ -1007,13 +912,13 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "get_steam_profile",
+    "steam_profile",
     {
-      title: getSteamProfileTool.title,
-      description: getSteamProfileTool.description,
+      title: tool("steam_profile").title,
+      description: tool("steam_profile").description,
       inputSchema: z.object({}),
       outputSchema: steamPlayerSummarySchema,
-      annotations: { readOnlyHint: true }
+      annotations: { readOnlyHint: true, openWorldHint: true }
     },
     async () => {
       const output = await client.getSteamProfile();
@@ -1025,19 +930,25 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  const sendVoiceMessageTool = mcpToolCatalog.find((t) => t.id === "send_voice_message")!;
+  // ───────────── voice ─────────────
+
   server.registerTool(
-    "send_voice_message",
+    "voice_send",
     {
-      title: sendVoiceMessageTool.title,
-      description: sendVoiceMessageTool.description,
+      title: tool("voice_send").title,
+      description: tool("voice_send").description,
       inputSchema: z.object({
         deviceId: z.string().min(1).describe("Target device id, e.g. 'android-phone'"),
-        senderName: z.string().min(1).describe("Your AI name as it should appear in the notification, e.g. 'Claude'"),
+        senderName: z.string().min(1).describe("Your AI name as it appears in the notification, e.g. 'Claude'"),
         senderAvatarUrl: z.string().url().optional().describe("Optional avatar image URL"),
-        text: z.string().min(1).max(300).describe("What to say. Keep it short — one sentence works best for voice.")
+        text: z.string().min(1).max(300).describe("Spoken text, 1-300 chars; Chinese works best. One sentence is ideal.")
       }),
-      annotations: { readOnlyHint: false }
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      }
     },
     async (input) => {
       const result = await client.sendVoiceMessage(input);
@@ -1058,7 +969,7 @@ export async function runMcpToolSmokeTest(
 
   try {
     switch (toolId) {
-      case "read_profile_summary": {
+      case "profile_read_summary": {
         const output = await client.getProfileSummary();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1068,7 +979,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_recent_context": {
+      case "context_recent": {
         const output = await client.getRecentContext();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1078,7 +989,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "create_journal_draft": {
+      case "journal_create_draft": {
         const output = await client.createJournalDraft({
           title: "Admin MCP smoke",
           content: "Created through the admin control room smoke flow.",
@@ -1092,7 +1003,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_health_summary": {
+      case "health_summary": {
         const output = await client.getHealthSummary();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1102,7 +1013,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_connector_status": {
+      case "connector_status": {
         const output = await client.getConnectorStatus();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1112,7 +1023,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_archive_status": {
+      case "archive_status": {
         const output = await client.getArchiveStatus();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1122,7 +1033,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "list_diary_entries": {
+      case "diary_list": {
         const output = await client.listDiaryEntries(5);
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1132,7 +1043,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "read_diary_entry": {
+      case "diary_read": {
         const list = await client.listDiaryEntries(1);
         const first = list.entries[0];
 
@@ -1157,7 +1068,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "lookup_time_log_at": {
+      case "time_log_lookup": {
         const output = await client.lookupTimeLogAt({
           at: new Date().toISOString()
         });
@@ -1171,7 +1082,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_device_status": {
+      case "device_status": {
         const output = await client.getDeviceCurrent();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1183,7 +1094,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_device_activity_summary": {
+      case "device_activity_summary": {
         const output = await client.getDeviceActivitySummary();
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1195,7 +1106,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_health_metrics": {
+      case "health_metrics": {
         const output = await client.getHealthRecords({ limit: 5 });
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -1207,7 +1118,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_device_timeline": {
+      case "device_timeline": {
         const output = await client.getDeviceTimeline({});
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1216,7 +1127,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_health_records": {
+      case "health_records": {
         const output = await client.getHealthRecords({ limit: 3 });
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1225,7 +1136,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "list_archive_files": {
+      case "archive_list": {
         const output = await client.listArchiveFiles({});
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1234,7 +1145,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "read_archive_file": {
+      case "archive_read": {
         const output = await client.readArchiveFile({ path: "Obsidian_Asashiki/00-索引.md" });
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1243,16 +1154,16 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_okx_balance": {
+      case "okx_balance": {
         const output = await client.getOkxBalance();
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
           summary: `OKX 账户权益 $${output.totalEquityUsd.toFixed(2)}，${output.holdings.length} 个币种持仓。`,
-          preview: output.holdings[0] ? `${output.holdings[0].currency}: $${output.holdings[0].valueUsd.toFixed(2)}` : "无持仓",
+          preview: output.holdings[0] ? `${output.holdings[0].currency}: $${(output.holdings[0].valueUsd ?? 0).toFixed(2)}` : "无持仓",
           executedAt
         });
       }
-      case "get_okx_positions": {
+      case "okx_positions": {
         const output = await client.getOkxPositions();
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1261,7 +1172,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "get_okx_assets": {
+      case "okx_assets": {
         const output = await client.getOkxAssets();
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1270,7 +1181,7 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "search_archive": {
+      case "archive_search": {
         const output = await client.searchArchive({ query: "日记", limit: 3 });
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
@@ -1279,28 +1190,28 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "write_archive_file":
-      case "delete_archive_file":
-      case "delete_diary_entry":
+      case "archive_write":
+      case "archive_delete":
+      case "diary_delete":
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
           summary: `${toolId} smoke test 跳过（避免改动真实文件）。`,
           preview: null,
           executedAt
         });
-      case "write_diary_entry":
+      case "diary_write":
         return mcpToolTestResultSchema.parse({
           toolId,
           ok: true,
-          summary: "write_diary_entry smoke test 跳过（避免产生真实文件）。",
+          summary: "diary_write smoke test 跳过（避免产生真实文件）。",
           preview: null,
           executedAt
         });
-      case "update_diary_entry":
+      case "diary_update":
         return mcpToolTestResultSchema.parse({
           toolId,
           ok: true,
-          summary: "update_diary_entry smoke test 跳过（避免改动真实文件）。",
+          summary: "diary_update smoke test 跳过（避免改动真实文件）。",
           preview: null,
           executedAt
         });
@@ -1308,7 +1219,7 @@ export async function runMcpToolSmokeTest(
         return mcpToolTestResultSchema.parse({
           toolId,
           ok: false,
-          summary: "未知 MCP 工具。",
+          summary: `${toolId} 暂无 smoke test 实现。`,
           preview: null,
           executedAt
         });

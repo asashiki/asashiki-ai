@@ -243,7 +243,7 @@ export function createRepository(database: DatabaseSync) {
       `).run(
         randomUUID(),
         payload.source,
-        "create_journal_draft",
+        "journal_create_draft",
         "journal_draft",
         draftId,
         JSON.stringify({
@@ -517,6 +517,19 @@ export function createRepository(database: DatabaseSync) {
           typeof previousState.last_seen_at === "string" &&
           typeof previousState.app_id === "string"
         ) {
+          // Close the previous activity at min(occurredAt, last_seen_at + grace).
+          // If the agent went offline (sleep/lock/network drop) between reports,
+          // crediting the whole gap to the last-known app is wrong — e.g. an
+          // overnight sleep would charge 8h to "startmenuexperiencehost". Grace
+          // covers the normal heartbeat interval; anything beyond is a tracking
+          // gap and should not count as continued use.
+          const GRACE_MS = 120 * 1000;
+          const lastSeenMs = new Date(previousState.last_seen_at).getTime();
+          const occurredMs = new Date(occurredAt).getTime();
+          const cappedEnd =
+            Number.isFinite(lastSeenMs) && occurredMs > lastSeenMs + GRACE_MS
+              ? new Date(lastSeenMs + GRACE_MS).toISOString()
+              : occurredAt;
           database
             .prepare(
               `UPDATE device_activities
@@ -526,7 +539,7 @@ export function createRepository(database: DatabaseSync) {
                  AND app_id = ?`
             )
             .run(
-              occurredAt,
+              cappedEnd,
               identity.deviceId,
               previousState.app_id
             );

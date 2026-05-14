@@ -285,17 +285,17 @@ function formatExposureLevel(exposureLevel: string) {
 
 function formatToolTitle(tool: McpToolCatalogItem) {
   switch (tool.id) {
-    case "read_profile_summary":
+    case "profile_read_summary":
       return "读取档案摘要";
-    case "get_recent_context":
+    case "context_recent":
       return "读取最近上下文";
-    case "create_journal_draft":
+    case "journal_create_draft":
       return "创建记录草稿";
-    case "get_health_summary":
+    case "health_summary":
       return "读取健康摘要";
-    case "get_connector_status":
+    case "connector_status":
       return "读取连接状态";
-    case "lookup_time_log_at":
+    case "time_log_lookup":
       return "按时刻查询时间日志";
     default:
       return tool.title;
@@ -304,17 +304,17 @@ function formatToolTitle(tool: McpToolCatalogItem) {
 
 function formatToolDescription(tool: McpToolCatalogItem) {
   switch (tool.id) {
-    case "read_profile_summary":
+    case "profile_read_summary":
       return "读取当前保存的个人档案摘要，确认 agent 能拿到基础背景。";
-    case "get_recent_context":
+    case "context_recent":
       return "读取最近草稿和状态提示，确认上下文摘要链路可用。";
-    case "create_journal_draft":
+    case "journal_create_draft":
       return "通过网关创建一条记录草稿，验证写入链路是否正常。";
-    case "get_health_summary":
+    case "health_summary":
       return "读取当前健康摘要，不暴露原始明细。";
-    case "get_connector_status":
+    case "connector_status":
       return "读取连接器摘要和当前状态，确认外部连接面是否可读。";
-    case "lookup_time_log_at":
+    case "time_log_lookup":
       return "按某个时刻查询 Supabase 时间日志，回答“那时我在做什么”。";
     default:
       return tool.description;
