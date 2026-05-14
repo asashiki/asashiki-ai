@@ -70,6 +70,21 @@ function parseJsonObject(value: unknown) {
   return typeof parsed === "object" && parsed !== null ? parsed : {};
 }
 
+function getShanghaiDayRange(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) {
+    throw new Error(`Invalid date: ${date}`);
+  }
+
+  const startMs = Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000;
+  const endMs = startMs + 24 * 60 * 60 * 1000;
+
+  return {
+    start: new Date(startMs).toISOString(),
+    endExclusive: new Date(endMs).toISOString()
+  };
+}
+
 export function createRepository(database: DatabaseSync) {
   return {
     getProfileSummary() {
@@ -630,17 +645,16 @@ export function createRepository(database: DatabaseSync) {
     },
 
     getDeviceTimeline(date: string, deviceId?: string | null) {
-      const dayStart = `${date}T00:00:00.000Z`;
-      const dayEnd = `${date}T23:59:59.999Z`;
+      const { start: dayStart, endExclusive: dayEnd } = getShanghaiDayRange(date);
 
       const sql = deviceId
         ? `SELECT id, device_id, app_id, window_title, started_at, ended_at, extra_json
            FROM device_activities
-           WHERE started_at BETWEEN ? AND ? AND device_id = ?
+           WHERE started_at >= ? AND started_at < ? AND device_id = ?
            ORDER BY started_at ASC`
         : `SELECT id, device_id, app_id, window_title, started_at, ended_at, extra_json
            FROM device_activities
-           WHERE started_at BETWEEN ? AND ?
+           WHERE started_at >= ? AND started_at < ?
            ORDER BY started_at ASC`;
       const rows = (deviceId
         ? database.prepare(sql).all(dayStart, dayEnd, deviceId)
