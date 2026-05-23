@@ -128,6 +128,38 @@ export const APP_LABELS: Record<string, AppLabel> = {
   "windows.afk":                       { name: "AFK",          desc: "暂时离开~" },
   "windows.idle":                      { name: "Windows",      desc: "Windows 待机~" },
 
+  // ── macOS sentinels & common bundle IDs ──────────────────────────────────
+  "macos.afk":                         { name: "AFK",          desc: "暂时离开~" },
+  "macos.idle":                        { name: "macOS",        desc: "Mac 待机~" },
+  "macos.unknown":                     { name: "未知",         desc: "在用未知 Mac App~" },
+  "com.apple.Safari":                  { name: "Safari",       desc: "正在用 Safari 浏览~" },
+  "com.apple.finder":                  { name: "访达",         desc: "正在翻文件~" },
+  "com.apple.dt.Xcode":                { name: "Xcode",        desc: "正在 coding~" },
+  "com.apple.Terminal":                { name: "终端",         desc: "在终端里敲命令~" },
+  "com.apple.Notes":                   { name: "备忘录",       desc: "正在记笔记~" },
+  "com.apple.iCal":                    { name: "日历",         desc: "正在看日历~" },
+  "com.apple.mail":                    { name: "邮件",         desc: "正在看邮件~" },
+  "com.apple.Music":                   { name: "音乐",         desc: "正在听 Apple Music~" },
+  "com.apple.Photos":                  { name: "照片",         desc: "正在翻照片~" },
+  "com.apple.Preview":                 { name: "预览",         desc: "正在看预览~" },
+  "com.apple.systempreferences":       { name: "系统设置",     desc: "正在改系统设置~" },
+  "com.apple.AppStore":                { name: "App Store",    desc: "正在找应用~" },
+  "com.apple.MobileSMS":               { name: "信息",         desc: "正在发消息~" },
+  "com.apple.facetime":                { name: "FaceTime",     desc: "正在打 FaceTime~" },
+  "com.microsoft.VSCode":              { name: "VS Code",      desc: "正在 coding~" },
+  "com.google.Chrome":                 { name: "Chrome",       desc: "正在用 Chrome 浏览~" },
+  "com.microsoft.edgemac":             { name: "Edge",         desc: "正在用 Edge 浏览~" },
+  "com.googlecode.iterm2":             { name: "iTerm",        desc: "在终端里敲命令~" },
+  "com.tencent.xinWeChat":             { name: "微信",         desc: "在微信里~" },
+  "com.tencent.qq":                    { name: "QQ",           desc: "在 QQ 里~" },
+  "com.tencent.qqmusic.mac":           { name: "QQ音乐",       desc: "正在听 QQ 音乐~" },
+  "com.netease.163music":              { name: "网易云音乐",   desc: "正在听网易云~" },
+  "tv.danmaku.bili.bilibilimac":       { name: "哔哩哔哩",     desc: "正在刷 B 站~" },
+  "com.taobao.dingding":               { name: "钉钉",         desc: "在钉钉里~" },
+  "com.openai.chat":                   { name: "ChatGPT",      desc: "在和 ChatGPT 聊~" },
+  "com.anthropic.Claude":              { name: "Claude",       desc: "在和 Claude 聊~" },
+  "com.todesktop.230313mzl4w4u92":     { name: "Cursor",       desc: "正在 coding~" },
+
   // ── Mobile system / MIUI ─────────────────────────────────────────────────
   "com.miui.home":                     { name: "桌面",          desc: "在桌面发呆~" },
   "com.miui.gallery":                  { name: "相册",          desc: "正在翻相册~" },
@@ -161,9 +193,27 @@ export function appName(appId: string | null | undefined): string {
 
 // ─── Live description (uses windowTitle when available) ─────────────────────
 
-const BROWSER_PROCS = new Set(["msedge", "chrome", "firefox", "opera", "brave"]);
-const EDITOR_PROCS = new Set(["code", "cursor", "windsurf", "devenv", "rider64", "idea64", "pycharm64", "webstorm64", "notepad"]);
-const TERMINAL_PROCS = new Set(["windowsterminal", "wt", "powershell", "pwsh", "cmd"]);
+const BROWSER_PROCS = new Set([
+  // Windows process names
+  "msedge", "chrome", "firefox", "opera", "brave",
+  // macOS bundle IDs
+  "com.apple.Safari", "com.google.Chrome", "com.microsoft.edgemac",
+  "org.mozilla.firefox", "com.operasoftware.Opera", "com.brave.Browser",
+]);
+const EDITOR_PROCS = new Set([
+  // Windows process names
+  "code", "cursor", "windsurf", "devenv", "rider64", "idea64",
+  "pycharm64", "webstorm64", "notepad",
+  // macOS bundle IDs
+  "com.microsoft.VSCode", "com.apple.dt.Xcode",
+  "com.todesktop.230313mzl4w4u92", // Cursor on macOS
+]);
+const TERMINAL_PROCS = new Set([
+  // Windows process names
+  "windowsterminal", "wt", "powershell", "pwsh", "cmd",
+  // macOS bundle IDs
+  "com.apple.Terminal", "com.googlecode.iterm2",
+]);
 
 // Strip common suffixes like " - Microsoft​ Edge", " — Mozilla Firefox" etc.
 const BROWSER_SUFFIX_RE = /\s*[-—–]\s*(Microsoft\s*Edge|Google Chrome|Mozilla Firefox|Opera|Brave)\s*$/i;
@@ -185,9 +235,10 @@ export function liveDescription({ appId, windowTitle, who = "Asashiki" }: LiveCo
   const title = windowTitle ? clean(windowTitle) : "";
 
   // Browsers: extract tab name from window title
+  // (Safari on macOS doesn't append " - Safari", so accept tab===title too.)
   if (appId && BROWSER_PROCS.has(appId) && title) {
     const tab = clean(title.replace(BROWSER_SUFFIX_RE, ""));
-    if (tab && tab.length > 0 && tab !== title) {
+    if (tab && tab.length > 0) {
       // Heuristic: detect well-known sites in tab text
       const lower = tab.toLowerCase();
       if (lower.includes("youtube"))   return `${who} 在 ${lbl.name} 上看 YouTube：${truncate(tab.replace(/^.*-\s*YouTube.*$/i, "").trim() || tab, 40)}`;
