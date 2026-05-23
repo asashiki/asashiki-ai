@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd template for the Asashiki Mac Agent.
+  Edit the two REPLACE_ME paths, then install:
+
+    cp com.asashiki.agent.plist.example ~/Library/LaunchAgents/com.asashiki.agent.plist
+    # edit the file
+    launchctl load -w ~/Library/LaunchAgents/com.asashiki.agent.plist
+
+  Uninstall:
+    launchctl unload -w ~/Library/LaunchAgents/com.asashiki.agent.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.asashiki.agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>python3</string>
+    <string>REPLACE_ME/absolute/path/to/agent.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>REPLACE_ME/absolute/path/to/apps/mac-agent</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/asashiki-mac-agent.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/asashiki-mac-agent.err.log</string>
+</dict>
+</plist>
