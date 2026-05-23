@@ -33,7 +33,7 @@ import {
 import type { Connector } from "@asashiki/schemas";
 import { z } from "zod";
 import { apiRuntimeSchema } from "./contracts.js";
-import { initializeDatabase, resolveDatabasePath } from "./db.js";
+import { initializeDatabase, migrateDatabase, resolveDatabasePath } from "./db.js";
 import {
   createRemoteMcpRegistry,
   parseRemoteMcpServerConfigs
@@ -1205,7 +1205,6 @@ export async function createCoreApiApp(options?: {
       reply.code(401); return { error: "Unauthorized" };
     }
     try {
-      const { migrateDatabase } = await import("./db.js");
       migrateDatabase(database);
       const tables = database
         .prepare(`SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`)
