@@ -25,6 +25,9 @@ export function openDatabase(path: string) {
 }
 
 export function migrateDatabase(database: DatabaseSync) {
+  // One-shot legacy cleanups (idempotent).
+  database.exec(`DROP TABLE IF EXISTS ios_app_sessions;`);
+
   database.exec(`
     CREATE TABLE IF NOT EXISTS profile_summary (
       id TEXT PRIMARY KEY,
@@ -166,6 +169,7 @@ export function migrateDatabase(database: DatabaseSync) {
 
     CREATE INDEX IF NOT EXISTS idx_voice_msgs_created
       ON voice_messages(created_at DESC);
+
   `);
 }
 

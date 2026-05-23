@@ -205,6 +205,26 @@ export const timeLogLookupResultSchema = z.object({
 
 export type TimeLogLookupResult = z.infer<typeof timeLogLookupResultSchema>;
 
+export const timeLogRangeInputSchema = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+  limit: z.coerce.number().int().positive().max(500).optional()
+});
+
+export type TimeLogRangeInput = z.infer<typeof timeLogRangeInputSchema>;
+
+export const timeLogRangeSchema = z.object({
+  connectorId: z.string().min(1),
+  queriedFrom: z.string().datetime(),
+  queriedTo: z.string().datetime(),
+  fetchedAt: z.string().datetime(),
+  total: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  events: z.array(timeLogEventSchema)
+});
+
+export type TimeLogRange = z.infer<typeof timeLogRangeSchema>;
+
 export const archiveStatusSchema = z.object({
   rootPath: z.string().min(1),
   diaryPath: z.string().min(1).nullable(),
@@ -505,7 +525,7 @@ export const healthRecordsQueryInputSchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   deviceId: z.string().min(1).optional(),
-  limit: z.number().int().positive().max(500).optional()
+  limit: z.coerce.number().int().positive().max(500).optional()
 });
 
 export type HealthRecordsQueryInput = z.infer<typeof healthRecordsQueryInputSchema>;
@@ -620,7 +640,7 @@ export type ArchiveFileDeleteResult = z.infer<typeof archiveFileDeleteResultSche
 export const archiveSearchInputSchema = z.object({
   query: z.string().min(1).max(200),
   dir: z.string().max(500).optional(),
-  limit: z.number().int().positive().max(50).optional()
+  limit: z.coerce.number().int().positive().max(50).optional()
 });
 
 export type ArchiveSearchInput = z.infer<typeof archiveSearchInputSchema>;
@@ -695,7 +715,7 @@ export type ArchiveFileListResult = z.infer<typeof archiveFileListResultSchema>;
 export const deviceTimelineInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   deviceId: z.string().optional(),
-  limit: z.number().int().positive().max(200).optional()
+  limit: z.coerce.number().int().positive().max(200).optional()
 });
 
 export type DeviceTimelineInput = z.infer<typeof deviceTimelineInputSchema>;
@@ -756,7 +776,7 @@ export const locationHistoryQueryInputSchema = z.object({
   deviceId: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
-  limit: z.number().int().positive().max(500).optional()
+  limit: z.coerce.number().int().positive().max(500).optional()
 });
 
 export type LocationHistoryQueryInput = z.infer<typeof locationHistoryQueryInputSchema>;

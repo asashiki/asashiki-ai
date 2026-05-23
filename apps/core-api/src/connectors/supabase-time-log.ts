@@ -3,24 +3,25 @@ import {
   timeLogEventSchema,
   timeLogLookupInputSchema,
   timeLogLookupResultSchema,
+  timeLogRangeInputSchema,
+  timeLogRangeSchema,
   timeLogRecentSchema
 } from "@asashiki/schemas";
 
 type RawRecord = Record<string, unknown>;
-
-type TimeLogCache = {
-  fetchedAt: string;
-  expiresAt: number;
-  events: ReturnType<typeof timeLogEventSchema.parse>[];
-};
 
 export type SupabaseTimeLogClientOptions = {
   url?: string;
   bearerToken?: string;
   connectorId?: string;
   connectorName?: string;
-  cacheTtlMs?: number;
 };
+
+// Lookup defaults
+const nearestPreviousWindowDays = 14;
+const defaultRecentLimit = 5;
+const defaultRangeLimit = 50;
+const maxRangeLimit = 500;
 
 function asRecord(value: unknown): RawRecord | null {
   return typeof value === "object" && value !== null
@@ -35,7 +36,6 @@ function pickString(record: RawRecord, keys: string[]) {
       return value.trim();
     }
   }
-
   return null;
 }
 
@@ -95,71 +95,42 @@ function extractRows(payload: unknown) {
   }
 
   const record = asRecord(payload);
+  if (!record) return [];
 
-  if (!record) {
-    return [];
-  }
-
-  const containerKeys = ["data", "rows", "result", "items", "records"];
-  for (const key of containerKeys) {
+  for (const key of ["data", "rows", "result", "items", "records"] as const) {
     const candidate = record[key];
     if (Array.isArray(candidate)) {
-      return candidate
-        .map(asRecord)
-        .filter((row): row is RawRecord => row !== null);
+      return candidate.map(asRecord).filter((row): row is RawRecord => row !== null);
     }
   }
-
   return [];
 }
 
 function normalizeRow(row: RawRecord, fallbackIndex: number) {
+  // Real time_events columns: start_time, end_time, category, remark, source.
+  // Keep legacy fallbacks so older table schemas keep working.
   const startedAt = toIsoDate(
-    row.started_at ??
+    row.start_time ??
+      row.started_at ??
       row.start_at ??
-      row.start_time ??
       row.occurred_at ??
-      row.occurredAt ??
       row.timestamp ??
-      row.at ??
       row.created_at
   );
 
-  if (!startedAt) {
-    return null;
-  }
+  if (!startedAt) return null;
 
   const endedAt = toIsoDate(
-    row.ended_at ?? row.end_at ?? row.end_time ?? row.finished_at ?? row.updated_at
+    row.end_time ?? row.ended_at ?? row.end_at ?? row.finished_at ?? null
   );
   const title =
-    pickString(row, [
-      "title",
-      "activity",
-      "activity_name",
-      "category",
-      "label",
-      "name",
-      "event",
-      "type"
-    ]) ?? `time-event-${fallbackIndex + 1}`;
-  const note = pickString(row, [
-    "note",
-    "notes",
-    "description",
-    "details",
-    "content",
-    "summary",
-    "comment"
-  ]);
-  const rawPreview =
-    note ??
-    pickString(row, ["context", "status", "location", "project", "category"]);
+    pickString(row, ["category", "title", "activity", "activity_name", "label", "name", "event", "type"]) ??
+    `time-event-${fallbackIndex + 1}`;
+  const note = pickString(row, ["remark", "note", "notes", "description", "details", "content", "summary", "comment"]);
+  const rawPreview = note ?? pickString(row, ["context", "status", "location", "project"]);
 
   return timeLogEventSchema.parse({
-    id:
-      pickString(row, ["id", "uuid", "event_id"]) ??
-      `${startedAt}-${fallbackIndex + 1}`,
+    id: pickString(row, ["id", "uuid", "event_id", "event_key"]) ?? `${startedAt}-${fallbackIndex + 1}`,
     title,
     startedAt,
     endedAt,
@@ -170,60 +141,46 @@ function normalizeRow(row: RawRecord, fallbackIndex: number) {
   });
 }
 
+function stripQuery(url: string) {
+  const idx = url.indexOf("?");
+  return idx === -1 ? url : url.slice(0, idx);
+}
+
 export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOptions) {
   const connectorId = options.connectorId ?? "connector-supabase-time-log";
   const connectorName = options.connectorName ?? "Supabase 时间日志";
-  const cacheTtlMs = options.cacheTtlMs ?? 5 * 60 * 1000;
   const integrationEnabled =
     typeof options.url === "string" && options.url.trim().length > 0;
-  let cache: TimeLogCache | null = null;
+  const baseUrl = integrationEnabled && options.url ? stripQuery(options.url) : "";
+  let lastSuccessAt: string | null = null;
 
-  async function fetchEvents(force = false) {
-    if (!integrationEnabled || !options.url) {
+  function headers(extra: Record<string, string> = {}) {
+    const h: Record<string, string> = { Accept: "application/json" };
+    if (options.bearerToken) {
+      h.Authorization = `Bearer ${options.bearerToken}`;
+      h.apikey = options.bearerToken;
+    }
+    return { ...h, ...extra };
+  }
+
+  async function query(params: string): Promise<RawRecord[]> {
+    if (!integrationEnabled) {
       throw new Error("Supabase time-log integration is not enabled.");
     }
-
-    if (!force && cache && cache.expiresAt > Date.now()) {
-      return cache;
-    }
-
-    const headers: Record<string, string> = {
-      Accept: "application/json"
-    };
-
-    if (options.bearerToken) {
-      headers.Authorization = `Bearer ${options.bearerToken}`;
-      headers.apikey = options.bearerToken;
-    }
-
-    const response = await fetch(options.url, {
-      headers
-    });
-
+    const url = `${baseUrl}?${params}`;
+    const response = await fetch(url, { headers: headers() });
     if (!response.ok) {
       throw new Error(`Supabase time-log read failed with ${response.status}.`);
     }
-
     const payload = await response.json();
-    const rows = extractRows(payload);
-    const events = rows
-      .map(normalizeRow)
-      .filter(
-        (event): event is ReturnType<typeof timeLogEventSchema.parse> =>
-          event !== null
-      )
-      .sort(
-        (left, right) =>
-          new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime()
-      );
+    lastSuccessAt = new Date().toISOString();
+    return extractRows(payload);
+  }
 
-    cache = {
-      fetchedAt: new Date().toISOString(),
-      expiresAt: Date.now() + cacheTtlMs,
-      events
-    };
-
-    return cache;
+  function normalizeAll(rows: RawRecord[]) {
+    return rows
+      .map((row, i) => normalizeRow(row, i))
+      .filter((e): e is ReturnType<typeof timeLogEventSchema.parse> => e !== null);
   }
 
   return {
@@ -241,22 +198,23 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
           lastSeenAt: new Date(0).toISOString(),
           lastSuccessAt: null,
           lastError: "Supabase time-log integration is not enabled.",
-          capabilities: ["time-log-read", "time-point-lookup"],
+          capabilities: ["time-log-read", "time-point-lookup", "time-range-query"],
           exposureLevel: "private-personal"
         });
       }
 
       try {
-        const snapshot = await fetchEvents();
+        // Light probe: just check connectivity, don't pull data.
+        await query("select=id&limit=1");
         return connectorSchema.parse({
           id: connectorId,
           name: connectorName,
           kind: "supabase-time-log",
           status: "online",
-          lastSeenAt: snapshot.fetchedAt,
-          lastSuccessAt: snapshot.fetchedAt,
+          lastSeenAt: lastSuccessAt ?? new Date().toISOString(),
+          lastSuccessAt,
           lastError: null,
-          capabilities: ["time-log-read", "time-point-lookup"],
+          capabilities: ["time-log-read", "time-point-lookup", "time-range-query"],
           exposureLevel: "private-personal"
         });
       } catch (error) {
@@ -266,44 +224,41 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
           kind: "supabase-time-log",
           status: "offline",
           lastSeenAt: new Date().toISOString(),
-          lastSuccessAt: cache?.fetchedAt ?? null,
-          lastError:
-            error instanceof Error
-              ? error.message
-              : "Supabase time-log connection failed.",
-          capabilities: ["time-log-read", "time-point-lookup"],
+          lastSuccessAt,
+          lastError: error instanceof Error ? error.message : "Supabase time-log connection failed.",
+          capabilities: ["time-log-read", "time-point-lookup", "time-range-query"],
           exposureLevel: "private-personal"
         });
       }
     },
 
-    async getRecent(limit = 5) {
-      const snapshot = await fetchEvents();
+    async getRecent(limit = defaultRecentLimit) {
+      const safeLimit = Math.max(1, Math.min(limit, 12));
+      const rows = await query(`select=*&order=start_time.desc&limit=${safeLimit}`);
       return timeLogRecentSchema.parse({
         connectorId,
-        fetchedAt: snapshot.fetchedAt,
-        events: snapshot.events.slice(0, Math.max(1, Math.min(limit, 12)))
+        fetchedAt: new Date().toISOString(),
+        events: normalizeAll(rows)
       });
     },
 
     async lookupAt(input: unknown) {
       const payload = timeLogLookupInputSchema.parse(input);
-      const snapshot = await fetchEvents();
-      const target = new Date(payload.at).getTime();
+      const target = payload.at;
 
-      const containing = snapshot.events.find((event) => {
-        const start = new Date(event.startedAt).getTime();
-        const end = event.endedAt
-          ? new Date(event.endedAt).getTime()
-          : new Date(event.startedAt).getTime();
-
-        return target >= start && target <= end;
-      });
+      // 1) Look for an event whose interval covers the target.
+      // start_time <= target AND (end_time >= target OR end_time IS NULL)
+      const containsRows = await query(
+        `select=*&start_time=lte.${target}` +
+          `&or=(end_time.gte.${target},end_time.is.null)` +
+          `&order=start_time.desc&limit=1`
+      );
+      const containing = normalizeAll(containsRows)[0];
 
       if (containing) {
         return timeLogLookupResultSchema.parse({
           connectorId,
-          queriedAt: payload.at,
+          queriedAt: target,
           matched: true,
           strategy: "contains",
           message: "Found a time-log entry covering that moment.",
@@ -312,41 +267,65 @@ export function createSupabaseTimeLogClient(options: SupabaseTimeLogClientOption
         });
       }
 
-      const previous = snapshot.events
-        .filter((event) => new Date(event.startedAt).getTime() <= target)
-        .sort(
-          (left, right) =>
-            new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime()
-        )[0];
+      // 2) Fallback: nearest previous within window.
+      const windowMs = nearestPreviousWindowDays * 24 * 60 * 60 * 1000;
+      const windowStart = new Date(new Date(target).getTime() - windowMs).toISOString();
+      const previousRows = await query(
+        `select=*&start_time=lte.${target}&start_time=gte.${windowStart}` +
+          `&order=start_time.desc&limit=1`
+      );
+      const previous = normalizeAll(previousRows)[0];
 
       if (previous) {
         const distanceMinutes = Math.max(
           0,
-          Math.round((target - new Date(previous.startedAt).getTime()) / 60_000)
+          Math.round(
+            (new Date(target).getTime() - new Date(previous.startedAt).getTime()) / 60_000
+          )
         );
-
-        if (distanceMinutes <= 24 * 60) {
-          return timeLogLookupResultSchema.parse({
-            connectorId,
-            queriedAt: payload.at,
-            matched: true,
-            strategy: "nearest-previous",
-            message:
-              "No exact covering entry was found, so the nearest previous time-log entry was returned.",
-            event: previous,
-            distanceMinutes
-          });
-        }
+        return timeLogLookupResultSchema.parse({
+          connectorId,
+          queriedAt: target,
+          matched: true,
+          strategy: "nearest-previous",
+          message: `No covering entry; nearest previous entry is ${Math.round(distanceMinutes / 60)} hours earlier.`,
+          event: previous,
+          distanceMinutes
+        });
       }
 
       return timeLogLookupResultSchema.parse({
         connectorId,
-        queriedAt: payload.at,
+        queriedAt: target,
         matched: false,
         strategy: "not-found",
-        message: "No usable time-log entry was found near that moment.",
+        message: `No time-log entry found within ${nearestPreviousWindowDays} days before ${target}.`,
         event: null,
         distanceMinutes: null
+      });
+    },
+
+    async lookupRange(input: unknown) {
+      const payload = timeLogRangeInputSchema.parse(input);
+      if (new Date(payload.from).getTime() > new Date(payload.to).getTime()) {
+        throw new Error("'from' must be earlier than 'to'.");
+      }
+      const limit = Math.max(1, Math.min(payload.limit ?? defaultRangeLimit, maxRangeLimit));
+      // Overlap: event.start_time <= to AND (event.end_time >= from OR end_time IS NULL)
+      const rows = await query(
+        `select=*&start_time=lte.${payload.to}` +
+          `&or=(end_time.gte.${payload.from},end_time.is.null)` +
+          `&order=start_time.asc&limit=${limit}`
+      );
+      const events = normalizeAll(rows);
+      return timeLogRangeSchema.parse({
+        connectorId,
+        queriedFrom: payload.from,
+        queriedTo: payload.to,
+        fetchedAt: new Date().toISOString(),
+        total: events.length,
+        truncated: events.length === limit,
+        events
       });
     }
   };

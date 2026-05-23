@@ -47,6 +47,15 @@ export type DeviceIdentity = {
 };
 
 const deviceOnlineWindowMs = 5 * 60 * 1000;
+// iOS reports state hourly (Time-of-Day automation), not continuously.
+// Use a wider window so the device isn't flagged offline between snapshots.
+const iosOnlineWindowMs = 65 * 60 * 1000;
+
+function onlineWindowMs(platform: unknown) {
+  return typeof platform === "string" && platform.toLowerCase() === "ios"
+    ? iosOnlineWindowMs
+    : deviceOnlineWindowMs;
+}
 
 type JsonRow = {
   [key: string]: unknown;
@@ -630,7 +639,7 @@ export function createRepository(database: DatabaseSync) {
           lastSeenAt: row.last_seen_at,
           isOnline:
             typeof row.last_seen_at === "string" &&
-            now - new Date(row.last_seen_at).getTime() < deviceOnlineWindowMs,
+            now - new Date(row.last_seen_at).getTime() < onlineWindowMs(row.platform),
           extra:
             typeof row.extra_json === "string" && row.extra_json.length > 0
               ? (parseJsonObject(row.extra_json) as Record<string, unknown>)
@@ -798,7 +807,7 @@ export function createRepository(database: DatabaseSync) {
     getHealthRecords(input: unknown) {
       const query = healthRecordsQueryInputSchema.parse(input ?? {});
       const filters: string[] = [];
-      const params: unknown[] = [];
+      const params: (string | number | null)[] = [];
 
       if (query.type) {
         filters.push("type = ?");
@@ -909,7 +918,7 @@ export function createRepository(database: DatabaseSync) {
     getLocationHistory(input: unknown) {
       const query = locationHistoryQueryInputSchema.parse(input ?? {});
       const filters: string[] = [];
-      const params: unknown[] = [];
+      const params: (string | number | null)[] = [];
 
       if (query.deviceId) { filters.push("device_id = ?"); params.push(query.deviceId); }
       if (query.from) { filters.push("recorded_at >= ?"); params.push(query.from); }

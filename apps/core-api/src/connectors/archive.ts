@@ -5,7 +5,8 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync
+  writeFileSync,
+  type Dirent
 } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
@@ -482,10 +483,10 @@ export function createArchiveClient(options: {
   }
 
   function searchArchive(query: string, dir?: string, limit = 20) {
-    const root = resolveRoot();
-    if (!root) throw new Error("Archive is not available.");
+    const archiveRoot = resolveRoot();
+    if (!archiveRoot) throw new Error("Archive is not available.");
 
-    const searchRoot = dir ? resolveInside(root, join(root, dir)) : root;
+    const searchRoot = dir ? resolveInside(archiveRoot, join(archiveRoot, dir)) : archiveRoot;
     if (!existsSync(searchRoot)) throw new Error(`Directory not found: ${dir ?? "/"}`);
 
     const lowerQuery = query.toLowerCase();
@@ -493,8 +494,8 @@ export function createArchiveClient(options: {
 
     function walk(current: string) {
       if (hits.length >= limit) return;
-      let entries: ReturnType<typeof readdirSync>;
-      try { entries = readdirSync(current, { withFileTypes: true }); } catch { return; }
+      let entries: Dirent[];
+      try { entries = readdirSync(current, { withFileTypes: true }) as Dirent[]; } catch { return; }
       for (const entry of entries) {
         if (hits.length >= limit) break;
         if (entry.name.startsWith(".")) continue;
@@ -510,7 +511,7 @@ export function createArchiveClient(options: {
           const start = Math.max(0, idx - 60);
           const end = Math.min(content.length, idx + query.length + 120);
           const excerpt = (start > 0 ? "…" : "") + content.slice(start, end).replace(/\n/g, " ") + (end < content.length ? "…" : "");
-          hits.push({ path: relative(root, full), excerpt, modifiedAt: stats.mtime.toISOString() });
+          hits.push({ path: relative(archiveRoot!, full), excerpt, modifiedAt: stats.mtime.toISOString() });
         } catch { continue; }
       }
     }

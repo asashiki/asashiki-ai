@@ -79,7 +79,7 @@ export async function fetchWeather(config: WeatherConfig) {
       precipitationMm: d.precipitation_sum[i],
       maxWindKmh: d.wind_speed_10m_max[i],
       weatherCode: d.weather_code[i],
-      description: describeCode(d.weather_code[i])
+      description: describeCode(d.weather_code[i] ?? 0)
     }))
   };
 }

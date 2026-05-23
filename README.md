@@ -56,9 +56,9 @@ Docker 中会只读挂载为：
 - archive：`archive_status`、`archive_list`、`archive_read`、`archive_write`、`archive_delete`、`archive_search`
 - diary：`diary_list`、`diary_read`、`diary_write`、`diary_update`、`diary_delete`
 - connector：`connector_status`
-- time log：`time_log_lookup`
+- time log：`time_log_lookup`、`time_log_range`
 - device：`device_status`、`device_activity_summary`、`device_timeline`
-- health：`health_summary`、`health_metrics`、`health_records`
+- health：`health_summary`、`health_records`
 - location / weather：`location_current`、`location_history`、`weather_current`
 - okx：`okx_balance`、`okx_positions`、`okx_assets`
 - steam：`steam_recent_games`、`steam_profile`

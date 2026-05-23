@@ -41,6 +41,8 @@ import {
   recentContextSchema,
   timeLogLookupInputSchema,
   timeLogLookupResultSchema,
+  timeLogRangeInputSchema,
+  timeLogRangeSchema,
   timeLogRecentSchema
 } from "@asashiki/schemas";
 import { z } from "zod";
@@ -188,6 +190,21 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       }
 
       return timeLogLookupResultSchema.parse(await response.json());
+    },
+
+    async lookupTimeLogRange(input: unknown) {
+      const payload = timeLogRangeInputSchema.parse(input);
+      const search = new URLSearchParams({ from: payload.from, to: payload.to });
+      if (payload.limit != null) search.set("limit", String(payload.limit));
+      const response = await fetch(
+        resolveUrl(baseUrl, `/api/time-log/range?${search.toString()}`)
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to query Supabase time-log range through Core API.");
+      }
+
+      return timeLogRangeSchema.parse(await response.json());
     },
 
     async getDeviceCurrent() {

@@ -43,10 +43,39 @@ import {
   profileSummarySchema,
   recentContextSchema,
   timeLogLookupInputSchema,
-  timeLogLookupResultSchema
+  timeLogLookupResultSchema,
+  timeLogRangeInputSchema,
+  timeLogRangeSchema
 } from "@asashiki/schemas";
 import { z } from "zod";
 import type { CoreApiClient } from "./core-api-client.js";
+
+// All timestamps in core-api are UTC ISO. Render them in Shanghai for the
+// text content the model reads, while keeping structuredContent on raw UTC.
+const shFmtHm = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+});
+const shFmtMdHm = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+});
+function shHm(iso: string | null | undefined): string {
+  if (!iso) return "??:??";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "??:??" : shFmtHm.format(d);
+}
+function shMdHm(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "—" : shFmtMdHm.format(d);
+}
 
 const connectorStatusOutputSchema = z.object({
   summary: connectorSummarySchema,
@@ -73,11 +102,11 @@ const mcpToolIds = [
   "diary_update",
   "diary_delete",
   "time_log_lookup",
+  "time_log_range",
   "device_status",
   "device_activity_summary",
   "device_timeline",
   "health_summary",
-  "health_metrics",
   "health_records",
   "location_current",
   "location_history",
@@ -188,7 +217,13 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
   {
     id: "time_log_lookup",
     title: "Lookup Time Log",
-    description: "Look up the time log around a specific timestamp.",
+    description: "What was I doing at a specific timestamp.",
+    readOnlyHint: true
+  },
+  {
+    id: "time_log_range",
+    title: "Time Log Range",
+    description: "List time-log events overlapping a [from, to] range.",
     readOnlyHint: true
   },
   {
@@ -216,15 +251,9 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
-    id: "health_metrics",
-    title: "Health Metrics",
-    description: "Query raw HealthConnect records.",
-    readOnlyHint: true
-  },
-  {
     id: "health_records",
     title: "Health Records",
-    description: "Query raw HealthConnect records by type/date.",
+    description: "Query raw HealthConnect records, optionally filtered by type/date.",
     readOnlyHint: true
   },
   {
@@ -516,7 +545,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
       title: tool("diary_list").title,
       description: tool("diary_list").description,
       inputSchema: z.object({
-        limit: z.number().int().positive().max(50).optional()
+        limit: z.coerce.number().int().positive().max(50).optional()
       }),
       outputSchema: archiveDiaryListSchema,
       annotations: { readOnlyHint: true }
@@ -644,6 +673,35 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
+    "time_log_range",
+    {
+      title: tool("time_log_range").title,
+      description: tool("time_log_range").description,
+      inputSchema: timeLogRangeInputSchema,
+      outputSchema: timeLogRangeSchema,
+      annotations: { readOnlyHint: true }
+    },
+    async (input: z.infer<typeof timeLogRangeInputSchema>) => {
+      const output = await client.lookupTimeLogRange(input);
+      if (output.events.length === 0) {
+        return {
+          content: [{ type: "text", text: `[${output.queriedFrom} → ${output.queriedTo}] 暂无时间日志。` }],
+          structuredContent: output
+        };
+      }
+      const head = output.events.slice(0, 30).map((e) =>
+        `${e.startedAt}${e.endedAt ? ` → ${e.endedAt}` : ""}  ${e.title}${e.note ? ` // ${e.note}` : ""}`
+      ).join("\n");
+      const text =
+        `[${output.queriedFrom} → ${output.queriedTo}] 共 ${output.total} 条${output.truncated ? "（已截断到上限）" : ""}：\n${head}`;
+      return {
+        content: [{ type: "text", text }],
+        structuredContent: output
+      };
+    }
+  );
+
+  server.registerTool(
     "device_status",
     {
       title: tool("device_status").title,
@@ -692,9 +750,18 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     },
     async (input: z.infer<typeof deviceTimelineInputSchema>) => {
       const output = await client.getDeviceTimeline(input);
-      const count = output.activities?.length ?? 0;
+      const acts = output.activities ?? [];
+      const head = acts.slice(0, 20).map((a) => {
+        const mins = a.endedAt
+          ? Math.max(1, Math.round((Date.parse(a.endedAt) - Date.parse(a.startedAt)) / 60000))
+          : null;
+        return `${shHm(a.startedAt)} ${a.appId ?? "?"}${mins != null ? ` (${mins}m)` : ""}`;
+      }).join("\n");
+      const text = acts.length === 0
+        ? `${output.date} 暂无活动记录。`
+        : `${output.date} 共 ${acts.length} 条活动，前 ${Math.min(20, acts.length)} 条：\n${head}`;
       return {
-        content: [{ type: "text", text: `Device timeline for ${output.date}: ${count} activity records.` }],
+        content: [{ type: "text", text }],
         structuredContent: output
       };
     }
@@ -719,24 +786,6 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   server.registerTool(
-    "health_metrics",
-    {
-      title: tool("health_metrics").title,
-      description: tool("health_metrics").description,
-      inputSchema: healthRecordsQueryInputSchema,
-      outputSchema: healthRecordsQuerySchema,
-      annotations: { readOnlyHint: true }
-    },
-    async (input: z.infer<typeof healthRecordsQueryInputSchema>) => {
-      const output = await client.getHealthRecords(input);
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
     "health_records",
     {
       title: tool("health_records").title,
@@ -747,8 +796,19 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     },
     async (input: z.infer<typeof healthRecordsQueryInputSchema>) => {
       const output = await client.getHealthRecords(input);
+      if (output.records.length === 0) {
+        return {
+          content: [{ type: "text", text: "该条件下暂无健康记录。" }],
+          structuredContent: output
+        };
+      }
+      const head = output.records.slice(0, 30).map((r) => {
+        const v = r.value ?? (r.valueJson != null ? JSON.stringify(r.valueJson) : "?");
+        return `${shMdHm(r.recordedAt)} ${r.type}=${v}${r.unit ? r.unit : ""}`;
+      }).join("\n");
+      const text = `共 ${output.records.length} 条健康记录，前 ${Math.min(30, output.records.length)} 条：\n${head}`;
       return {
-        content: [{ type: "text", text: `${output.records.length} health records returned.` }],
+        content: [{ type: "text", text }],
         structuredContent: output
       };
     }
@@ -771,7 +831,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
         ? "暂无位置数据。请确保 Android App 已开启位置追踪。"
         : output.devices.map((d) => {
             const speed = d.speedMps != null ? ` 速度${(d.speedMps * 3.6).toFixed(1)}km/h` : "";
-            return `${d.deviceId}: ${d.lat.toFixed(5)},${d.lon.toFixed(5)}${speed} @ ${d.recordedAt}`;
+            return `${d.deviceId}: ${d.lat.toFixed(5)},${d.lon.toFixed(5)}${speed} @ ${shMdHm(d.recordedAt)}`;
           }).join("\n");
       return {
         content: [{ type: "text", text: summary }],
@@ -791,11 +851,18 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     },
     async (input: z.infer<typeof locationHistoryQueryInputSchema>) => {
       const output = await client.getLocationHistory(input);
-      const summary = output.total === 0
-        ? "该时段内无位置记录。"
-        : `共 ${output.total} 个位置点，最新: ${output.points[0]?.recordedAt ?? "—"}`;
+      if (output.total === 0) {
+        return {
+          content: [{ type: "text", text: "该时段内无位置记录。" }],
+          structuredContent: output
+        };
+      }
+      const head = output.points.slice(0, 20).map((p) =>
+        `${shMdHm(p.recordedAt)} ${p.lat.toFixed(5)},${p.lon.toFixed(5)}${p.speedMps != null ? ` ${(p.speedMps * 3.6).toFixed(1)}km/h` : ""}`
+      ).join("\n");
+      const text = `共 ${output.total} 个位置点，最新 ${Math.min(20, output.points.length)} 条：\n${head}`;
       return {
-        content: [{ type: "text", text: summary }],
+        content: [{ type: "text", text }],
         structuredContent: output
       };
     }
@@ -1082,6 +1149,21 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
+      case "time_log_range": {
+        const now = Date.now();
+        const output = await client.lookupTimeLogRange({
+          from: new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString(),
+          to: new Date(now).toISOString(),
+          limit: 5
+        });
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: `时间日志区间查询成功：近 7 天 ${output.total} 条。`,
+          preview: output.events[0]?.title ?? "暂无记录。",
+          executedAt
+        });
+      }
       case "device_status": {
         const output = await client.getDeviceCurrent();
         return mcpToolTestResultSchema.parse({
@@ -1103,18 +1185,6 @@ export async function runMcpToolSmokeTest(
           preview: output.perApp[0]
             ? `${output.perApp[0].appId}: ${Math.round(output.perApp[0].totalSeconds / 60)} 分钟`
             : "今日暂无活动记录。",
-          executedAt
-        });
-      }
-      case "health_metrics": {
-        const output = await client.getHealthRecords({ limit: 5 });
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `读取到 ${output.records.length} 条健康记录。`,
-          preview: output.records[0]
-            ? `${output.records[0].type}: ${output.records[0].value ?? JSON.stringify(output.records[0].valueJson)}`
-            : "暂无健康数据。",
           executedAt
         });
       }

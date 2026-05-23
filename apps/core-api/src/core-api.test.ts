@@ -87,24 +87,71 @@ test("seeded core api serves profile, journals, remote mcp, connectors and audit
     "utf8"
   );
 
-  upstream.get("/time_events", async () => [
+  // Mock the real Supabase time_events table with the real column names.
+  // Minimal PostgREST semantics: filter by start_time/end_time, order, limit.
+  const timeEvents = [
     {
       id: "evt-1",
-      title: "Write milestone plan",
-      started_at: "2025-04-16T09:00:00.000Z",
-      ended_at: "2025-04-16T10:00:00.000Z",
-      note: "Milestone 8 connector planning",
+      category: "Write milestone plan",
+      start_time: "2025-04-16T09:00:00.000Z",
+      end_time: "2025-04-16T10:00:00.000Z",
+      remark: "Milestone 8 connector planning",
       tags: ["planning", "project"]
     },
     {
       id: "evt-2",
-      title: "Refine admin console",
-      started_at: "2025-04-16T17:00:00.000Z",
-      ended_at: "2025-04-16T18:00:00.000Z",
-      note: "Admin-first pass",
+      category: "Refine admin console",
+      start_time: "2025-04-16T17:00:00.000Z",
+      end_time: "2025-04-16T18:00:00.000Z",
+      remark: "Admin-first pass",
       tags: ["ui", "console"]
     }
-  ]);
+  ];
+
+  upstream.get("/time_events", async (request) => {
+    const q = request.query as Record<string, string | string[] | undefined>;
+    const asList = (v: string | string[] | undefined) =>
+      v == null ? [] : Array.isArray(v) ? v : [v];
+
+    let rows = [...timeEvents];
+
+    const parseOp = (expr: string): [string, string] => {
+      const idx = expr.indexOf(".");
+      return idx === -1 ? [expr, ""] : [expr.slice(0, idx), expr.slice(idx + 1)];
+    };
+    for (const expr of asList(q.start_time)) {
+      const [op, val] = parseOp(expr);
+      if (op === "lte") rows = rows.filter((r) => r.start_time <= val);
+      else if (op === "gte") rows = rows.filter((r) => r.start_time >= val);
+    }
+    for (const expr of asList(q.end_time)) {
+      const [op, val] = parseOp(expr);
+      if (op === "lte") rows = rows.filter((r) => r.end_time != null && r.end_time <= val);
+      else if (op === "gte") rows = rows.filter((r) => r.end_time != null && r.end_time >= val);
+    }
+    for (const expr of asList(q.or)) {
+      // Supported shape: (end_time.gte.<X>,end_time.is.null)
+      const m = /^\(end_time\.gte\.([^,]+),end_time\.is\.null\)$/.exec(expr);
+      if (m && m[1]) {
+        const v = m[1];
+        rows = rows.filter((r) => (r.end_time != null && r.end_time >= v) || r.end_time == null);
+      }
+    }
+    if (typeof q.order === "string") {
+      const [col, dir] = q.order.split(".");
+      if (col) {
+        rows.sort((a, b) => {
+          const av = (a as Record<string, unknown>)[col] ?? "";
+          const bv = (b as Record<string, unknown>)[col] ?? "";
+          return dir === "desc"
+            ? String(bv).localeCompare(String(av))
+            : String(av).localeCompare(String(bv));
+        });
+      }
+    }
+    if (typeof q.limit === "string") rows = rows.slice(0, parseInt(q.limit, 10));
+    return rows;
+  });
 
   const upstreamAddress = await upstream.listen({
     host: "127.0.0.1",
