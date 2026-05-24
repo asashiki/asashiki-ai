@@ -56,6 +56,25 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    // Two flavors share the same applicationId so users install only the one they want.
+    // - full: phone build, includes chat UI + voice playback
+    // - lite: tablet build, settings + data collection only
+    flavorDimensions += "edition"
+    productFlavors {
+        create("full") {
+            dimension = "edition"
+            buildConfigField("boolean", "INCLUDE_CHAT", "true")
+            resValue("string", "app_name", "Asashiki Agent")
+        }
+        create("lite") {
+            dimension = "edition"
+            buildConfigField("boolean", "INCLUDE_CHAT", "false")
+            resValue("string", "app_name", "Asashiki Agent Lite")
+            versionNameSuffix = "-lite"
+        }
     }
 
     packaging {

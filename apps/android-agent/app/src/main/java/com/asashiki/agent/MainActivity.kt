@@ -113,7 +113,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var showSettings by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                    // Lite (tablet) build skips the chat shell entirely and lands on settings.
+                    val includeChat = BuildConfig.INCLUDE_CHAT
+                    var showSettings by androidx.compose.runtime.remember {
+                        androidx.compose.runtime.mutableStateOf(!includeChat)
+                    }
                     if (showSettings) {
                         AgentScreen(
                             hcGranted = hcGrantedState.value,
@@ -138,7 +142,7 @@ class MainActivity : ComponentActivity() {
                                     data = Uri.parse("package:$packageName")
                                 })
                             },
-                            onBack = { showSettings = false }
+                            onBack = { if (includeChat) showSettings = false }
                         )
                     } else {
                         ChatScreen(onOpenSettings = { showSettings = true })
@@ -239,8 +243,10 @@ fun AgentScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Asashiki Agent · 设置", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) {
-                Text("返回对话", fontSize = 13.sp)
+            if (BuildConfig.INCLUDE_CHAT) {
+                Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) {
+                    Text("返回对话", fontSize = 13.sp)
+                }
             }
         }
 

@@ -98,10 +98,12 @@ class TrackingService : Service() {
         }
         acquireWakeLock()
         scheduleWatchdog()
-        voicePoller.start(
-            getServerUrl = { settingsStore.load().serverUrl },
-            getToken = { settingsStore.load().token }
-        )
+        if (BuildConfig.INCLUDE_CHAT) {
+            voicePoller.start(
+                getServerUrl = { settingsStore.load().serverUrl },
+                getToken = { settingsStore.load().token }
+            )
+        }
 
         trackingJob = serviceScope.launch {
             while (isActive) {
@@ -183,7 +185,7 @@ class TrackingService : Service() {
 
     private fun stopTracking(cancelWatchdog: Boolean = true) {
         locationTracker.stop()
-        voicePoller.stop()
+        if (BuildConfig.INCLUDE_CHAT) voicePoller.stop()
         trackingJob?.cancel()
         trackingJob = null
         lastSentKey = ""
