@@ -48,12 +48,14 @@ class TrackingService : Service() {
             ACTION_STOP -> {
                 settingsStore.setRunningEnabled(false)
                 settingsStore.appendLog("收到停止指令")
+                WatchdogWorker.cancel(this)
                 stopTracking()
                 return START_NOT_STICKY
             }
 
             ACTION_START, null -> {
                 settingsStore.appendLog("收到启动指令")
+                WatchdogWorker.enqueue(this)
                 startTrackingIfNeeded()
                 return START_STICKY
             }
@@ -309,16 +311,10 @@ class TrackingService : Service() {
     }
 
     private fun effectiveServiceType(): Int {
-        var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Android 14+ requires permission check before adding LOCATION type
-            if (locationTracker.hasPermission()) {
-                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            }
-        } else if (locationTracker.hasPermission()) {
-            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-        }
-        return type
+        // dataSync only: location is sampled via getCurrentLocation() one-shot calls,
+        // not via a persistent subscription, so we don't need the LOCATION FGS type.
+        // Avoiding the LOCATION type also keeps MIUI's green indicator from staying lit.
+        return ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
     }
 
     private fun updateNotificationNow(text: String) {

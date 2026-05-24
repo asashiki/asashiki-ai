@@ -25,6 +25,11 @@ class BootReceiver : BroadcastReceiver() {
 
         if (!shouldStart) return
 
+        // Enqueue the backup watchdog before attempting the FGS start. If MIUI blocks
+        // the boot-time FGS start, the periodic worker will still bring the service back
+        // within ~15 minutes once the app exits the "newly booted, background-restricted" window.
+        runCatching { WatchdogWorker.enqueue(context) }
+
         val serviceIntent = Intent(context, TrackingService::class.java).apply {
             this.action = TrackingService.ACTION_START
         }

@@ -205,6 +205,7 @@ fun AgentScreen(
     var hasForegroundLocation by remember { mutableStateOf(false) }
     var hasBackgroundLocation by remember { mutableStateOf(false) }
     var isBatteryOptimizationIgnored by remember { mutableStateOf(false) }
+    var diagnostics by remember { mutableStateOf<RuntimeDiagnosticsSnapshot?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -219,6 +220,7 @@ fun AgentScreen(
             ) == PackageManager.PERMISSION_GRANTED
             val pm = context.getSystemService(PowerManager::class.java)
             isBatteryOptimizationIgnored = pm.isIgnoringBatteryOptimizations(context.packageName)
+            diagnostics = withContext(Dispatchers.IO) { RuntimeDiagnostics.snapshot(context) }
             onRefreshHcState()
             delay(3_000)
         }
@@ -489,10 +491,54 @@ fun AgentScreen(
 
         if (settings.locationTrackingEnabled) {
             Text(
-                "每 10 分钟或移动 100m 记录一次位置，每 5 分钟上传",
+                "每 10 分钟取一次位置（≥80m 移动才记录），每 5 分钟上传。状态栏绿点只在取点那几秒亮起。",
                 fontSize = 11.sp, color = Color.Gray
             )
         }
+
+        Spacer(Modifier.height(4.dp))
+
+        // ── Runtime diagnostics ─────────────────────────────────────────
+        SectionHeader("运行诊断")
+
+        diagnostics?.let { d ->
+            val bucketColor = when (d.standbyBucket) {
+                "ACTIVE", "WORKING_SET" -> Color(0xFF388E3C)
+                "FREQUENT" -> Color(0xFFF57C00)
+                "RARE", "RESTRICTED" -> Color(0xFFD32F2F)
+                else -> Color.Gray
+            }
+            Text(
+                "服务运行中：${if (d.serviceRunning) "是" else "否"}",
+                fontSize = 12.sp,
+                color = if (d.serviceRunning) Color(0xFF388E3C) else Color(0xFFD32F2F),
+            )
+            Text(
+                "电池白名单：${if (d.batteryUnrestricted) "已豁免" else "未豁免（受限）"}",
+                fontSize = 12.sp,
+                color = if (d.batteryUnrestricted) Color(0xFF388E3C) else Color(0xFFF57C00),
+            )
+            Text(
+                "待机分桶：${d.standbyBucket}",
+                fontSize = 12.sp,
+                color = bucketColor,
+            )
+            if (d.recentExits.isNotEmpty()) {
+                Text("最近退出原因：", fontSize = 12.sp, color = Color.Gray)
+                d.recentExits.take(5).forEach { e ->
+                    Text(
+                        "  ${e.timestamp}  ${e.reason}  ${e.importance}" +
+                            (e.description?.takeIf { it.isNotBlank() }?.let { "  · $it" } ?: ""),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 14.sp,
+                        color = Color.Gray,
+                    )
+                }
+            } else {
+                Text("最近退出原因：暂无（API < 30 或无记录）", fontSize = 11.sp, color = Color.Gray)
+            }
+        } ?: Text("加载中…", fontSize = 12.sp, color = Color.Gray)
 
         Spacer(Modifier.height(4.dp))
 
