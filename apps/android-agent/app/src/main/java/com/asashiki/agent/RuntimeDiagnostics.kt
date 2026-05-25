@@ -26,6 +26,8 @@ data class RuntimeDiagnosticsSnapshot(
         val reason: String,
         val importance: String,
         val description: String?,
+        // First ~30 lines of the crash/ANR trace, if available.
+        val traceExcerpt: String?,
     )
 }
 
@@ -80,9 +82,29 @@ object RuntimeDiagnostics {
                     reason = reasonName(info.reason),
                     importance = importanceName(info.importance),
                     description = info.description,
+                    traceExcerpt = readTrace(info),
                 )
             }
         }.getOrDefault(emptyList())
+    }
+
+    private fun readTrace(info: ApplicationExitInfo): String? {
+        // Trace is only populated for CRASH / CRASH_NATIVE / ANR reasons.
+        val hasTrace = info.reason == ApplicationExitInfo.REASON_CRASH ||
+            info.reason == ApplicationExitInfo.REASON_CRASH_NATIVE ||
+            info.reason == ApplicationExitInfo.REASON_ANR
+        if (!hasTrace) return null
+        return runCatching {
+            info.traceInputStream?.bufferedReader()?.use { reader ->
+                val lines = mutableListOf<String>()
+                var line = reader.readLine()
+                while (line != null && lines.size < 60) {
+                    lines += line
+                    line = reader.readLine()
+                }
+                lines.joinToString("\n")
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
     private fun reasonName(reason: Int): String = when (reason) {

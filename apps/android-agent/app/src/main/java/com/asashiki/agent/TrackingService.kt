@@ -107,80 +107,95 @@ class TrackingService : Service() {
 
         trackingJob = serviceScope.launch {
             while (isActive) {
-                val settings = settingsStore.load()
-                scheduleWatchdog(calculateWatchdogDelay(settings))
-
-                // Sync location tracker state with settings
-                if (settings.locationTrackingEnabled && settings.isRunningEnabled) {
-                    locationTracker.start(settings.serverUrl, settings.token)
-                } else {
-                    locationTracker.stop()
-                }
-
-                if (!settings.isRunningEnabled) {
-                    setServiceState("等待启动", "等待用户启动监听")
-                    delay(2_000)
-                    continue
-                }
-
-                if (!settings.consentGiven || !settings.reportActivity) {
-                    setServiceState("需要先同意授权")
+                try {
+                    runOneTick()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    // Log any unexpected throwable instead of letting it crash the service
+                    // and trigger the watchdog restart loop.
+                    val msg = "循环异常：${t.javaClass.simpleName}: ${t.message}"
+                    settingsStore.appendLog(msg)
+                    android.util.Log.e("TrackingService", msg, t)
                     delay(5_000)
-                    continue
                 }
-
-                if (!UsageTracker.hasUsageStatsPermission(this@TrackingService)) {
-                    setServiceState("未授予使用情况访问权限")
-                    delay(5_000)
-                    continue
-                }
-
-                val appInfo = UsageTracker.currentForegroundApp(this@TrackingService)
-                if (appInfo == null) {
-                    setServiceState("等待前台应用")
-                    delay(settings.heartbeatSeconds * 1_000L)
-                    continue
-                }
-
-                val customRule = settings.customRules.firstOrNull {
-                    it.packageName.equals(appInfo.packageName, ignoreCase = true)
-                }
-                val effectiveAppInfo = if (customRule != null) {
-                    appInfo.copy(appName = customRule.customAppName)
-                } else {
-                    appInfo
-                }
-
-                val extras = DeviceContextProvider.readExtras(
-                    context = this@TrackingService,
-                    customAppName = customRule?.customAppName,
-                    customDescription = customRule?.customDescription,
-                )
-                val musicKey = extras.music
-                    ?.let { "${it.app.orEmpty()}|${it.title}|${it.artist.orEmpty()}" }
-                    ?: ""
-                val timeBucket = effectiveAppInfo.timestampMs / 10_000L
-                val dedupKey = "${effectiveAppInfo.packageName}:$timeBucket:$musicKey:${customRule?.customDescription.orEmpty()}"
-                val now = System.currentTimeMillis()
-                val forceHeartbeat = now - lastSuccessfulReportAt >= FORCE_REPORT_INTERVAL_MS
-
-                if (dedupKey != lastSentKey || forceHeartbeat) {
-                    val sent = ApiReporter.postReport(settings, effectiveAppInfo, extras)
-                    if (sent) {
-                        lastSentKey = dedupKey
-                        lastSuccessfulReportAt = now
-                        setServiceState(
-                            text = buildReportStatus(effectiveAppInfo, extras),
-                            logText = "上报成功：${effectiveAppInfo.appName}${formatMusicSuffix(extras.music)}"
-                        )
-                    } else {
-                        setServiceState("上报失败，正在重试")
-                    }
-                }
-
-                delay(settings.heartbeatSeconds * 1_000L)
             }
         }
+    }
+
+    private suspend fun runOneTick() {
+        val settings = settingsStore.load()
+        scheduleWatchdog(calculateWatchdogDelay(settings))
+
+        // Sync location tracker state with settings
+        if (settings.locationTrackingEnabled && settings.isRunningEnabled) {
+            locationTracker.start(settings.serverUrl, settings.token)
+        } else {
+            locationTracker.stop()
+        }
+
+        if (!settings.isRunningEnabled) {
+            setServiceState("等待启动", "等待用户启动监听")
+            delay(2_000)
+            return
+        }
+
+        if (!settings.consentGiven || !settings.reportActivity) {
+            setServiceState("需要先同意授权")
+            delay(5_000)
+            return
+        }
+
+        if (!UsageTracker.hasUsageStatsPermission(this@TrackingService)) {
+            setServiceState("未授予使用情况访问权限")
+            delay(5_000)
+            return
+        }
+
+        val appInfo = UsageTracker.currentForegroundApp(this@TrackingService)
+        if (appInfo == null) {
+            setServiceState("等待前台应用")
+            delay(settings.heartbeatSeconds * 1_000L)
+            return
+        }
+
+        val customRule = settings.customRules.firstOrNull {
+            it.packageName.equals(appInfo.packageName, ignoreCase = true)
+        }
+        val effectiveAppInfo = if (customRule != null) {
+            appInfo.copy(appName = customRule.customAppName)
+        } else {
+            appInfo
+        }
+
+        val extras = DeviceContextProvider.readExtras(
+            context = this@TrackingService,
+            customAppName = customRule?.customAppName,
+            customDescription = customRule?.customDescription,
+        )
+        val musicKey = extras.music
+            ?.let { "${it.app.orEmpty()}|${it.title}|${it.artist.orEmpty()}" }
+            ?: ""
+        val timeBucket = effectiveAppInfo.timestampMs / 10_000L
+        val dedupKey = "${effectiveAppInfo.packageName}:$timeBucket:$musicKey:${customRule?.customDescription.orEmpty()}"
+        val now = System.currentTimeMillis()
+        val forceHeartbeat = now - lastSuccessfulReportAt >= FORCE_REPORT_INTERVAL_MS
+
+        if (dedupKey != lastSentKey || forceHeartbeat) {
+            val sent = ApiReporter.postReport(settings, effectiveAppInfo, extras)
+            if (sent) {
+                lastSentKey = dedupKey
+                lastSuccessfulReportAt = now
+                setServiceState(
+                    text = buildReportStatus(effectiveAppInfo, extras),
+                    logText = "上报成功：${effectiveAppInfo.appName}${formatMusicSuffix(extras.music)}"
+                )
+            } else {
+                setServiceState("上报失败，正在重试")
+            }
+        }
+
+        delay(settings.heartbeatSeconds * 1_000L)
     }
 
     private fun stopTracking(cancelWatchdog: Boolean = true) {

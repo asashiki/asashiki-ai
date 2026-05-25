@@ -540,6 +540,16 @@ fun AgentScreen(
                         lineHeight = 14.sp,
                         color = Color.Gray,
                     )
+                    e.traceExcerpt?.let { trace ->
+                        Text(
+                            trace,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = 13.sp,
+                            color = Color(0xFFD32F2F),
+                            modifier = Modifier.padding(start = 12.dp, top = 2.dp, bottom = 4.dp),
+                        )
+                    }
                 }
             } else {
                 Text("最近退出原因：暂无（API < 30 或无记录）", fontSize = 11.sp, color = Color.Gray)
