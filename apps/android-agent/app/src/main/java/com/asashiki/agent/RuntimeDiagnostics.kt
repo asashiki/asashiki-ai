@@ -20,6 +20,7 @@ data class RuntimeDiagnosticsSnapshot(
     val standbyBucket: String,
     val serviceRunning: Boolean,
     val recentExits: List<ExitEntry>,
+    val capturedCrashes: List<CrashCapture.Entry>,
 ) {
     data class ExitEntry(
         val timestamp: String,
@@ -39,6 +40,7 @@ object RuntimeDiagnostics {
             standbyBucket = readStandbyBucket(context),
             serviceRunning = isTrackingServiceRunning(context),
             recentExits = readRecentExits(context),
+            capturedCrashes = CrashCapture.loadHistory(context),
         )
     }
 

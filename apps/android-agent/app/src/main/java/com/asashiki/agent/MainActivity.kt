@@ -554,6 +554,38 @@ fun AgentScreen(
             } else {
                 Text("最近退出原因：暂无（API < 30 或无记录）", fontSize = 11.sp, color = Color.Gray)
             }
+
+            if (d.capturedCrashes.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("已捕获崩溃堆栈：", fontSize = 12.sp, color = Color.Gray)
+                    Button(
+                        onClick = { CrashCapture.clear(context) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                    ) { Text("清除", fontSize = 11.sp) }
+                }
+                d.capturedCrashes.forEach { c ->
+                    Text(
+                        "${c.timestamp}  ${c.summary}",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 14.sp,
+                        color = Color(0xFFD32F2F),
+                    )
+                    Text(
+                        c.trace,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 13.sp,
+                        color = Color(0xFFD32F2F),
+                        modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 6.dp),
+                    )
+                }
+            }
         } ?: Text("加载中…", fontSize = 12.sp, color = Color.Gray)
 
         Spacer(Modifier.height(4.dp))
