@@ -5,6 +5,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+      specialUse on Android 14+ to avoid the 6h/24h dataSync cap (Android 15 enforces it
+      with ForegroundServiceDidNotStopInTimeException, then refuses subsequent starts).
+      dataSync is kept as a fallback for older devices where specialUse doesn't exist.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -68,12 +74,17 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- Device tracking foreground service (from live-dashboard) -->
+        <!-- Device tracking foreground service.
+             specialUse subtype is required when foregroundServiceType is specialUse. -->
         <service
             android:name=".TrackingService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse|dataSync">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="continuous personal life-tracking agent: collects user-consented foreground-app, battery, music, and location samples for the user's own diary; sideloaded, not distributed via Google Play" />
+        </service>
 
         <!-- Voice message playback service (triggered by notification tap) -->
         <service

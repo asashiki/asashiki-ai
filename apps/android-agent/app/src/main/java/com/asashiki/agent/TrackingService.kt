@@ -328,10 +328,16 @@ class TrackingService : Service() {
     }
 
     private fun effectiveServiceType(): Int {
-        // dataSync only: location is sampled via getCurrentLocation() one-shot calls,
-        // not via a persistent subscription, so we don't need the LOCATION FGS type.
-        // Avoiding the LOCATION type also keeps MIUI's green indicator from staying lit.
-        return ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        // specialUse instead of dataSync. dataSync has a 6h/24h runtime cap on Android 15+
+        // (ForegroundServiceDidNotStopInTimeException, then ForegroundServiceStartNotAllowed)
+        // which guarantees we hit a crash loop after about a day. specialUse has no such cap.
+        // Location is sampled via one-shot getCurrentLocation(), so no LOCATION type either —
+        // keeps MIUI's location indicator from staying lit.
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        }
     }
 
     private fun updateNotificationNow(text: String) {
