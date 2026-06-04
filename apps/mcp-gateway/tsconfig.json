@@ -9,6 +9,7 @@
     "src/app.ts",
     "src/core-api-client.ts",
     "src/mcp.ts",
+    "src/smoke.ts",
     "src/server.ts",
     "src/auth/tokens.ts",
     "src/auth/tokens.test.ts",

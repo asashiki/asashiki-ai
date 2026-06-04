@@ -8,9 +8,9 @@ import {
   createMcpGatewayServer,
   mcpToolCatalog,
   mcpToolIdSchema,
-  runMcpToolSmokeTest,
   skillMeta
 } from "./mcp.js";
+import { runMcpToolSmokeTest } from "./smoke.js";
 import { AuthStore } from "./auth/store.js";
 import { registerOAuthRoutes } from "./auth/routes.js";
 import { parseBearer } from "./auth/tokens.js";

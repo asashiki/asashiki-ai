@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { createCoreApiApp } from "../../core-api/src/app.js";
 import { createMcpGatewayApp } from "./app.js";
+import { mcpToolCatalog } from "./mcp.js";
 
 test("mcp gateway lists tools and calls core-api-backed actions", async () => {
   const directory = mkdtempSync(join(tmpdir(), "asashiki-mcp-gateway-"));
@@ -87,6 +88,12 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
 
     const listed = await client.listTools();
     assert.ok(listed.tools.length >= 9);
+    // No registry in this harness → every catalog tool must be registered.
+    // Guards refactors against accidentally dropping a tool.
+    const listedNames = new Set(listed.tools.map((t) => t.name));
+    for (const entry of mcpToolCatalog) {
+      assert.ok(listedNames.has(entry.id), `tool missing from listTools: ${entry.id}`);
+    }
 
     const connectors = await client.callTool({
       name: "connector_status",
