@@ -195,41 +195,12 @@ export async function createMcpGatewayApp(options?: {
     server.post("/mcp-oauth", protectedMcp);
 
     // ── Admin: skill registry management (for the console) ──────────────────
-    // Slice 1 auth: gateway admin token. Slice 2 will move this behind an
-    // OAuth-based admin session (see viking project doc console-plan.md).
-    const adminToken = env.MCP_CORE_API_ADMIN_TOKEN;
-    const requireAdmin = (request: FastifyRequest, reply: FastifyReply): boolean => {
-      const bearer = parseBearer(request.headers.authorization);
-      if (!adminToken || bearer !== adminToken) {
-        reply.code(401);
-        return false;
-      }
-      return true;
-    };
-
-    // Server-rendered admin console (login → session cookie).
+    // Server-rendered admin console (login → session cookie). This is the only
+    // admin surface — skill toggles etc. go through session-protected /console/*
+    // routes. (The old admin-token /admin/skills API was removed: redundant.)
     registerConsoleRoutes(server, store, client, {
       secureCookie: env.NODE_ENV === "production",
       rediscoverRemote: discoverRemoteSkills
-    });
-
-    server.get("/admin/skills", async (request, reply) => {
-      if (!requireAdmin(request, reply)) return { error: "unauthorized" };
-      return { skills: store.listSkills() };
-    });
-
-    server.post("/admin/skills/:id", async (request, reply) => {
-      if (!requireAdmin(request, reply)) return { error: "unauthorized" };
-      const { id } = request.params as { id: string };
-      const body = (request.body ?? {}) as { enabled?: unknown };
-      if (typeof body.enabled !== "boolean") {
-        reply.code(400);
-        return { error: "body.enabled (boolean) required" };
-      }
-      const ok = store.setSkillEnabled(id, body.enabled);
-      if (!ok) { reply.code(404); return { error: `unknown skill: ${id}` }; }
-      store.audit({ action: "skill_toggle", success: true, detail: `${id}=${body.enabled}` });
-      return { skillId: id, enabled: body.enabled };
     });
 
     server.addHook("onClose", async () => {
