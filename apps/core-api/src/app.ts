@@ -47,7 +47,7 @@ import { createVikingConnector, parseVikingEnv, VikingError } from "./connectors
 import { fetchWeather, parseWeatherConfig } from "./connectors/weather.js";
 import { parseMinimaxConfig, synthesizeVoice } from "./connectors/minimax.js";
 import { createRepository } from "./repository.js";
-import { appLabel, appName, liveDescription } from "./app-labels.js";
+import { appName } from "./app-labels.js";
 import * as nodeFs from "node:fs";
 import * as nodePath from "node:path";
 import { randomUUID } from "node:crypto";
@@ -117,15 +117,6 @@ function summarizeConnectors(connectors: Connector[]) {
     degraded: connectors.filter((row) => row.status === "degraded").length,
     offline: connectors.filter((row) => row.status === "offline").length
   });
-}
-
-function escapeHtml(value: unknown) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function getBasicPassword(authorizationHeader: unknown) {
@@ -213,190 +204,6 @@ export async function createCoreApiApp(options?: {
   server.get("/health", async () =>
     createServiceHealth(manifest, env.NODE_ENV, startedAt)
   );
-
-  server.get("/console", async (request, reply) => {
-    // App label mapping is imported from app-labels.ts
-
-    function fmtTime(iso: string): string {
-      return new Date(iso).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" });
-    }
-    function fmtDuration(s: number | null): string {
-      if (!s || s < 60) return `${s ?? 0}秒`;
-      const m = Math.round(s / 60);
-      return m >= 60 ? `${Math.floor(m / 60)}h${m % 60}m` : `${m}分钟`;
-    }
-
-    // ── Read query params ───────────────────────────────────────────────────
-    const qs = request.query as Record<string, string>;
-    const filterDevice = qs.device ?? "";
-
-    // ── Fetch all data ──────────────────────────────────────────────────────
-    const [archiveStatus, remoteServers, deviceCurrent, recentHealth] = await Promise.all([
-      Promise.resolve(archive.getStatus()),
-      remoteMcpRegistry.listServers(),
-      Promise.resolve(repository.getDeviceCurrent()),
-      Promise.resolve(repository.getHealthRecords({ limit: 6 }))
-    ]);
-
-    const today = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).slice(0, 10);
-    const activitySummary = repository.getDeviceActivitySummary(today);
-    const timeline = repository.getDeviceTimeline(today, filterDevice || null);
-    const locationData = repository.getLocationCurrent();
-    const svcHealth = createServiceHealth(manifest, env.NODE_ENV, startedAt);
-
-    let weatherLine = "";
-    try {
-      const loc = locationData.devices[0];
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-      const wConfig = loc && loc.recordedAt > twoHoursAgo
-        ? { ...weatherConfig, latitude: loc.lat, longitude: loc.lon, locationName: "当前位置" }
-        : weatherConfig;
-      const w = await fetchWeather(wConfig);
-      weatherLine = `${escapeHtml(w.location)} ${escapeHtml(w.current.description)} ${w.current.temperatureC}°C 湿度${w.current.humidity}%`;
-    } catch { weatherLine = "天气获取失败"; }
-
-    // ── Live status block (per device) ──────────────────────────────────────
-    function liveStatus(): string {
-      if (deviceCurrent.devices.length === 0) return `<p class="muted">暂无设备在线。</p>`;
-      // Sort: online first, then by lastSeenAt desc
-      const sorted = [...deviceCurrent.devices].sort((a, b) => {
-        if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
-        return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
-      });
-      return sorted.map((d) => {
-        const label = appLabel(d.appId);
-        const desc = liveDescription({ appId: d.appId, windowTitle: d.windowTitle, who: "Asashiki" });
-        const music = (d.extra as any)?.music;
-        const musicLine = music?.title ? ` ♪ ${escapeHtml(music.title)}${music.artist ? ` - ${escapeHtml(music.artist)}` : ""}` : "";
-        const bat = (d.extra as any)?.battery_percent;
-        const charging = (d.extra as any)?.battery_charging;
-        const net = (d.extra as any)?.network_type;
-        const onlineClass = d.isOnline ? "ok" : "muted";
-        const seenAgo = Math.round((Date.now() - new Date(d.lastSeenAt).getTime()) / 1000);
-        const seenStr = seenAgo < 120 ? `${seenAgo}秒前` : seenAgo < 7200 ? `${Math.round(seenAgo / 60)}分钟前` : `${Math.round(seenAgo / 3600)}小时前`;
-        const titleLine = d.windowTitle && d.windowTitle !== d.appId
-          ? `<tr><th>窗口</th><td class="muted">${escapeHtml(d.windowTitle)}</td></tr>`
-          : "";
-        return `
-        <h3 style="margin:18px 0 6px;font-size:14px;color:#444;">${escapeHtml(d.deviceName)} <span class="muted" style="font-weight:normal">(${escapeHtml(d.platform)})</span></h3>
-        <table>
-          <tr><th>状态</th><td class="${onlineClass}">${d.isOnline ? "在线" : "离线"} · ${escapeHtml(seenStr)}</td></tr>
-          <tr><th>正在做</th><td><strong>${escapeHtml(desc)}</strong>${escapeHtml(musicLine)}</td></tr>
-          <tr><th>应用</th><td>${escapeHtml(label.name)} <span class="muted">${escapeHtml(d.appId ?? "")}</span></td></tr>
-          ${titleLine}
-          ${bat != null ? `<tr><th>电量</th><td>${escapeHtml(String(bat))}%${charging ? " ⚡充电中" : ""} · ${escapeHtml(net ?? "")}</td></tr>` : ""}
-        </table>`;
-      }).join("\n") + `
-        <table style="margin-top:12px;">
-          <tr><th>天气</th><td>${escapeHtml(weatherLine)}</td></tr>
-        </table>`;
-    }
-
-    // ── Timeline (with device filter UI) ────────────────────────────────────
-    function deviceFilter(): string {
-      const items: Array<{ id: string; label: string }> = [{ id: "", label: "全部" }];
-      for (const d of deviceCurrent.devices) items.push({ id: d.deviceId, label: d.deviceName });
-      return items.map(it => {
-        const isActive = it.id === filterDevice;
-        const href = it.id ? `?device=${encodeURIComponent(it.id)}` : "?";
-        return `<a href="${href}" style="margin-right:12px;text-decoration:none;color:${isActive ? "#111" : "#888"};font-weight:${isActive ? "600" : "normal"};">${isActive ? "● " : "○ "}${escapeHtml(it.label)}</a>`;
-      }).join("");
-    }
-
-    function timelineRows(): string {
-      const acts = timeline.activities.slice(-50).reverse();
-      if (acts.length === 0) return `<tr><td class="muted">今日暂无活动记录。</td></tr>`;
-      return acts.map((a) => {
-        const desc = liveDescription({ appId: a.appId, windowTitle: a.windowTitle, who: "" }).trim();
-        const dur = a.durationSeconds ? ` · ${escapeHtml(fmtDuration(a.durationSeconds))}` : " · 进行中";
-        return `<tr><td><span class="muted">${escapeHtml(fmtTime(a.startedAt))}</span> ${escapeHtml(desc)}<span class="muted">${escapeHtml(dur)}</span></td></tr>`;
-      }).join("\n        ");
-    }
-
-    // ── Activity summary ────────────────────────────────────────────────────
-    function activityRows(): string {
-      if (activitySummary.perApp.length === 0) return `<tr><td colspan="2" class="muted">今日暂无数据。</td></tr>`;
-      return activitySummary.perApp.slice(0, 12).map((a) => {
-        const label = appLabel(a.appId);
-        return `<tr><th>${escapeHtml(label.name)}</th><td>${escapeHtml(fmtDuration(a.totalSeconds))} · ${escapeHtml(String(a.count))}次 <span class="muted">${escapeHtml(a.appId)}</span></td></tr>`;
-      }).join("\n        ");
-    }
-
-    // ── Health ──────────────────────────────────────────────────────────────
-    function healthRows(): string {
-      if (recentHealth.records.length === 0) return `<tr><td colspan="2" class="muted">暂无数据。</td></tr>`;
-      return recentHealth.records.map((r) => {
-        const val = r.valueJson ? escapeHtml(JSON.stringify(r.valueJson)) : `${escapeHtml(String(r.value ?? "—"))}${r.unit ? " " + escapeHtml(r.unit) : ""}`;
-        return `<tr><th>${escapeHtml(r.type)}</th><td>${val} <span class="muted">${escapeHtml(fmtTime(r.recordedAt))}</span></td></tr>`;
-      }).join("\n        ");
-    }
-
-    const updatedAt = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
-
-    const html = `<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Asashiki Console</title>
-    <style>
-      body { margin: 0; font: 15px/1.7 ui-monospace, "Cascadia Code", "Fira Code", monospace; color: #222; background: #f7f7f4; }
-      main { max-width: 800px; margin: 0 auto; padding: 28px 18px 56px; }
-      h1 { font-size: 20px; margin: 0 0 2px; letter-spacing: -0.5px; }
-      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin: 28px 0 6px; border-bottom: 1px solid #e0ddd5; padding-bottom: 4px; }
-      p { margin: 0 0 8px; color: #555; font-size: 13px; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eeeae2; vertical-align: top; font-size: 14px; }
-      th { width: 130px; color: #777; font-weight: normal; }
-      td strong { color: #111; }
-      .ok { color: #23724d; }
-      .warn { color: #9a6a14; }
-      .bad { color: #a13a31; }
-      .muted { color: #aaa; font-size: 12px; }
-      .live-desc { font-size: 18px; font-weight: 600; color: #111; padding: 14px 10px 6px; }
-    </style>
-    <script>
-      let countdown = 30;
-      function tick() {
-        const el = document.getElementById("cd");
-        if (el) el.textContent = countdown + "s";
-        if (--countdown <= 0) location.reload();
-        else setTimeout(tick, 1000);
-      }
-      window.onload = tick;
-    </script>
-  </head>
-  <body>
-    <main>
-      <h1>Asashiki Console</h1>
-      <p class="muted">自动刷新 <span id="cd">30s</span> · 更新于 ${escapeHtml(updatedAt)}</p>
-
-      <h2>现在</h2>
-      ${liveStatus()}
-
-      <h2>今日时间线 (${escapeHtml(today)})</h2>
-      <p style="font-size:13px;margin:6px 0 8px;">${deviceFilter()}</p>
-      <table>${timelineRows()}</table>
-
-      <h2>今日应用统计</h2>
-      <table>${activityRows()}</table>
-
-      <h2>最近健康数据</h2>
-      <table>${healthRows()}</table>
-
-      <h2>服务</h2>
-      <table>
-        <tr><th>Core API</th><td class="ok">online · uptime ${escapeHtml(String(svcHealth.uptimeSeconds))}s</td></tr>
-        <tr><th>Archive</th><td class="${archiveStatus.status === "online" ? "ok" : "warn"}">${escapeHtml(archiveStatus.status)} · ${escapeHtml(String(archiveStatus.fileCount))} 篇日记 · 最新 ${escapeHtml(archiveStatus.latestDiaryDate ?? "—")}</td></tr>
-        <tr><th>上游 MCP</th><td>${escapeHtml(String(remoteServers.length))} registered</td></tr>
-      </table>
-    </main>
-  </body>
-</html>`;
-
-    reply.header("Content-Type", "text/html; charset=utf-8");
-    return html;
-  });
 
   server.get("/api/runtime", async () =>
     apiRuntimeSchema.parse({

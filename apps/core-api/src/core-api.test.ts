@@ -48,24 +48,7 @@ test("empty optional integrations do not block core-api startup", async () => {
     });
     assert.equal(timeLogRecent.statusCode, 503);
 
-    const publicConsole = await server.inject({
-      method: "GET",
-      url: "/console"
-    });
-    assert.equal(publicConsole.statusCode, 200);
-    assert.match(publicConsole.body, /Asashiki Console/);
-
-    const authenticatedConsole = await server.inject({
-      method: "GET",
-      url: "/console",
-      headers: {
-        authorization: `Basic ${Buffer.from("admin:test-console-token").toString(
-          "base64"
-        )}`
-      }
-    });
-    assert.equal(authenticatedConsole.statusCode, 200);
-    assert.match(authenticatedConsole.body, /Asashiki Console/);
+    // Old core-api /console HTML removed (superseded by the mcp-gateway console).
   } finally {
     await server.close();
     rmSync(directory, { recursive: true, force: true });
