@@ -3,22 +3,11 @@ import {
   locationCurrentSchema,
   locationHistorySchema,
   locationHistoryQueryInputSchema,
-  archiveFileDeleteInputSchema,
-  archiveFileDeleteResultSchema,
   okxAccountBalanceSchema,
   okxAssetBalancesSchema,
   okxPositionsSchema,
   steamRecentGamesSchema,
   steamPlayerSummarySchema,
-  archiveFileListInputSchema,
-  archiveFileListResultSchema,
-  archiveFileReadInputSchema,
-  archiveFileResultSchema,
-  archiveFileWriteInputSchema,
-  archiveFileWriteResultSchema,
-  archiveSearchInputSchema,
-  archiveSearchResultSchema,
-  archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   deviceActivitySummarySchema,
@@ -32,10 +21,6 @@ import {
   healthRecordsQueryInputSchema,
   healthRecordsQuerySchema,
   healthSummarySchema,
-  journalDraftInputSchema,
-  journalDraftSavedSchema,
-  profileSummarySchema,
-  recentContextSchema,
   timeLogLookupInputSchema,
   timeLogLookupResultSchema,
   timeLogRangeInputSchema,
@@ -52,55 +37,6 @@ function resolveUrl(baseUrl: string, path: string) {
 
 export function createCoreApiClient(baseUrl: string, adminToken?: string) {
   return {
-    async getProfileSummary() {
-      const response = await fetch(resolveUrl(baseUrl, "/api/profile/summary"));
-
-      if (!response.ok) {
-        throw new Error("Failed to load profile summary from Core API.");
-      }
-
-      return profileSummarySchema.parse(await response.json());
-    },
-
-    async getRecentContext() {
-      const response = await fetch(resolveUrl(baseUrl, "/api/context/recent"));
-
-      if (!response.ok) {
-        throw new Error("Failed to load recent context from Core API.");
-      }
-
-      return recentContextSchema.parse(await response.json());
-    },
-
-    async createJournalDraft(input: unknown) {
-      const baseInput =
-        typeof input === "object" && input !== null
-          ? (input as Record<string, unknown>)
-          : {};
-
-      const payload = journalDraftInputSchema.parse({
-        ...baseInput,
-        source:
-          typeof baseInput.source === "string"
-            ? baseInput.source
-            : "mcp-gateway"
-      });
-
-      const response = await fetch(resolveUrl(baseUrl, "/api/journals/drafts"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create journal draft via Core API.");
-      }
-
-      return journalDraftSavedSchema.parse(await response.json());
-    },
-
     async getHealthSummary() {
       const response = await fetch(resolveUrl(baseUrl, "/api/health/summary"));
 
@@ -125,16 +61,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
         summary: connectorSummarySchema.parse(await summaryResponse.json()),
         connectors: connectorSchema.array().parse(await connectorsResponse.json())
       };
-    },
-
-    async getArchiveStatus() {
-      const response = await fetch(resolveUrl(baseUrl, "/api/archive/status"));
-
-      if (!response.ok) {
-        throw new Error("Failed to load archive status from Core API.");
-      }
-
-      return archiveStatusSchema.parse(await response.json());
     },
 
     async getRecentTimeLog(limit = 5) {
@@ -221,42 +147,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       return diaryWriteResultSchema.parse(await response.json());
     },
 
-    async readArchiveFile(input: unknown) {
-      const { path } = archiveFileReadInputSchema.parse(input);
-      const url = resolveUrl(baseUrl, `/api/archive/file?path=${encodeURIComponent(path)}`);
-      const response = await fetch(url);
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(typeof body.message === "string" ? body.message : "File not found.");
-      }
-      return archiveFileResultSchema.parse(await response.json());
-    },
-
-    async writeArchiveFile(input: unknown) {
-      const payload = archiveFileWriteInputSchema.parse(input);
-      const response = await fetch(resolveUrl(baseUrl, "/api/archive/file"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(typeof body.message === "string" ? body.message : "Write failed.");
-      }
-      return archiveFileWriteResultSchema.parse(await response.json());
-    },
-
-    async listArchiveFiles(input: unknown) {
-      const { dir } = archiveFileListInputSchema.parse(input);
-      const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
-      const response = await fetch(resolveUrl(baseUrl, `/api/archive/files${qs}`));
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(typeof body.message === "string" ? body.message : "List failed.");
-      }
-      return archiveFileListResultSchema.parse(await response.json());
-    },
-
     async getOkxBalance() {
       const res = await fetch(resolveUrl(baseUrl, "/api/okx/balance"));
       if (!res.ok) throw new Error("OKX balance unavailable.");
@@ -273,19 +163,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       const res = await fetch(resolveUrl(baseUrl, "/api/okx/assets"));
       if (!res.ok) throw new Error("OKX asset balances unavailable.");
       return okxAssetBalancesSchema.parse(await res.json());
-    },
-
-    async deleteArchiveFile(input: unknown) {
-      const { path } = archiveFileDeleteInputSchema.parse(input);
-      const response = await fetch(
-        resolveUrl(baseUrl, `/api/archive/file?path=${encodeURIComponent(path)}`),
-        { method: "DELETE" }
-      );
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
-      }
-      return archiveFileDeleteResultSchema.parse(await response.json());
     },
 
     async getLocationCurrent() {
@@ -322,19 +199,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       const res = await fetch(resolveUrl(baseUrl, "/api/steam/profile"));
       if (!res.ok) throw new Error("Steam profile unavailable.");
       return steamPlayerSummarySchema.parse(await res.json());
-    },
-
-    async searchArchive(input: unknown) {
-      const params = archiveSearchInputSchema.parse(input);
-      const qs = new URLSearchParams({ query: params.query });
-      if (params.dir) qs.set("dir", params.dir);
-      if (params.limit) qs.set("limit", String(params.limit));
-      const response = await fetch(resolveUrl(baseUrl, `/api/archive/search?${qs}`));
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(typeof body.message === "string" ? body.message : "Search failed.");
-      }
-      return archiveSearchResultSchema.parse(await response.json());
     },
 
     async getDeviceTimeline(input: unknown) {

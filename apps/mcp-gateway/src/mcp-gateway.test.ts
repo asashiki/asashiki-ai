@@ -88,31 +88,15 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     const listed = await client.listTools();
     assert.ok(listed.tools.length >= 9);
 
-    const profile = await client.callTool({
-      name: "profile_read_summary",
-      arguments: {}
-    });
-    assert.equal(profile.isError, undefined);
-
-    const recentContext = await client.callTool({
-      name: "context_recent",
-      arguments: {}
-    });
-    assert.equal(recentContext.isError, undefined);
-
     const connectors = await client.callTool({
       name: "connector_status",
       arguments: {}
     });
     assert.equal(connectors.isError, undefined);
 
-    const archiveStatus = await client.callTool({
-      name: "archive_status",
-      arguments: {}
-    });
-    assert.equal(archiveStatus.isError, undefined);
-
-    // diary_list / diary_read removed — agents use OpenViking directly.
+    // archive_*, profile_read_summary, context_recent, journal_create_draft,
+    // diary_list/read were removed (archive → OpenViking; profile/journal stay
+    // as core-api routes for admin-web, not as MCP tools).
 
     const timeLogLookup = await client.callTool({
       name: "time_log_lookup",
@@ -121,15 +105,6 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
       }
     });
     assert.equal(timeLogLookup.isError, undefined);
-
-    const created = await client.callTool({
-      name: "journal_create_draft",
-      arguments: {
-        content: "Created from test suite.",
-        source: "mcp-test"
-      }
-    });
-    assert.equal(created.isError, undefined);
   } finally {
     await client.close();
     await mcpGateway.close();

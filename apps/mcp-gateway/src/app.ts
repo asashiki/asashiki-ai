@@ -134,6 +134,8 @@ export async function createMcpGatewayApp(options?: {
         description: t.description
       });
     }
+    // Drop local skills that no longer exist in the catalog (self-heal).
+    store.reconcileLocalSkills(new Set(mcpToolCatalog.map((t) => t.id)));
 
     // Discover remote-MCP tools and seed them DISABLED (opt-in). Reusable so the
     // console can re-run it after add/remove. Non-fatal: a down/misconfigured

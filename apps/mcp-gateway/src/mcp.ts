@@ -3,23 +3,12 @@ import {
   locationCurrentSchema,
   locationHistorySchema,
   locationHistoryQueryInputSchema,
-  archiveFileDeleteInputSchema,
-  archiveFileDeleteResultSchema,
   okxAccountBalanceSchema,
   okxAssetBalancesSchema,
   okxPositionsSchema,
   weatherSchema,
   steamRecentGamesSchema,
   steamPlayerSummarySchema,
-  archiveFileListInputSchema,
-  archiveFileListResultSchema,
-  archiveFileReadInputSchema,
-  archiveFileResultSchema,
-  archiveFileWriteInputSchema,
-  archiveFileWriteResultSchema,
-  archiveSearchInputSchema,
-  archiveSearchResultSchema,
-  archiveStatusSchema,
   connectorSchema,
   connectorSummarySchema,
   deviceActivitySummarySchema,
@@ -31,12 +20,8 @@ import {
   healthRecordsQueryInputSchema,
   healthRecordsQuerySchema,
   healthSummarySchema,
-  journalDraftInputSchema,
-  journalDraftSavedSchema,
   mcpToolCatalogSchema,
   mcpToolTestResultSchema,
-  profileSummarySchema,
-  recentContextSchema,
   timeLogLookupInputSchema,
   timeLogLookupResultSchema,
   timeLogRangeInputSchema,
@@ -86,16 +71,7 @@ const connectorStatusOutputSchema = z.object({
 // Domain groups related capabilities so model selection is easier; action is the verb.
 // See apps/mcp-gateway/README.md for how to add a new tool.
 const mcpToolIds = [
-  "profile_read_summary",
-  "context_recent",
-  "journal_create_draft",
   "connector_status",
-  "archive_status",
-  "archive_list",
-  "archive_read",
-  "archive_write",
-  "archive_delete",
-  "archive_search",
   "diary_write",
   "time_log_lookup",
   "time_log_range",
@@ -122,63 +98,9 @@ export type McpToolId = z.infer<typeof mcpToolIdSchema>;
 
 export const mcpToolCatalog = mcpToolCatalogSchema.parse([
   {
-    id: "profile_read_summary",
-    title: "Read Profile Summary",
-    description: "Stable profile summary curated by Core API.",
-    readOnlyHint: true
-  },
-  {
-    id: "context_recent",
-    title: "Recent Context",
-    description: "Compact recent journals + safe status hints.",
-    readOnlyHint: true
-  },
-  {
-    id: "journal_create_draft",
-    title: "Create Journal Draft",
-    description: "Create a journal draft via Core API (audited).",
-    readOnlyHint: false
-  },
-  {
     id: "connector_status",
     title: "Connector Status",
     description: "Connector summary and per-connector state.",
-    readOnlyHint: true
-  },
-  {
-    id: "archive_status",
-    title: "Archive Status",
-    description: "Check if Archive and diary folder are readable.",
-    readOnlyHint: true
-  },
-  {
-    id: "archive_list",
-    title: "List Archive Files",
-    description: "List files/subdirs in an Archive directory.",
-    readOnlyHint: true
-  },
-  {
-    id: "archive_read",
-    title: "Read Archive File",
-    description: "Read any Archive Markdown/text file by relative path.",
-    readOnlyHint: true
-  },
-  {
-    id: "archive_write",
-    title: "Write Archive File",
-    description: "Create or overwrite an Archive file by relative path.",
-    readOnlyHint: false
-  },
-  {
-    id: "archive_delete",
-    title: "Delete Archive File",
-    description: "Permanently delete an Archive file by relative path.",
-    readOnlyHint: false
-  },
-  {
-    id: "archive_search",
-    title: "Search Archive",
-    description: "Full-text search across Archive Markdown/text files.",
     readOnlyHint: true
   },
   {
@@ -313,16 +235,7 @@ export const skillCategory = {
 } as const;
 
 export const skillMeta: Record<McpToolId, { category: string; initialEnabled: boolean }> = {
-  profile_read_summary: { category: skillCategory.profile, initialEnabled: false },
-  context_recent: { category: skillCategory.profile, initialEnabled: false },
-  journal_create_draft: { category: skillCategory.action, initialEnabled: false },
   connector_status: { category: skillCategory.meta, initialEnabled: true },
-  archive_status: { category: skillCategory.archive, initialEnabled: false },
-  archive_list: { category: skillCategory.archive, initialEnabled: false },
-  archive_read: { category: skillCategory.archive, initialEnabled: false },
-  archive_write: { category: skillCategory.archive, initialEnabled: false },
-  archive_delete: { category: skillCategory.archive, initialEnabled: false },
-  archive_search: { category: skillCategory.archive, initialEnabled: false },
   diary_write: { category: skillCategory.action, initialEnabled: true },
   time_log_lookup: { category: skillCategory.realtime, initialEnabled: true },
   time_log_range: { category: skillCategory.realtime, initialEnabled: true },
@@ -397,67 +310,6 @@ export function createMcpGatewayServer(
 
   // ───────────── profile / context / journal ─────────────
 
-  maybeTool(
-    "profile_read_summary",
-    {
-      title: tool("profile_read_summary").title,
-      description: tool("profile_read_summary").description,
-      inputSchema: z.object({}),
-      outputSchema: profileSummarySchema,
-      annotations: { readOnlyHint: true }
-    },
-    async () => {
-      const output = await client.getProfileSummary();
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "context_recent",
-    {
-      title: tool("context_recent").title,
-      description: tool("context_recent").description,
-      inputSchema: z.object({}),
-      outputSchema: recentContextSchema,
-      annotations: { readOnlyHint: true }
-    },
-    async () => {
-      const output = await client.getRecentContext();
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "journal_create_draft",
-    {
-      title: tool("journal_create_draft").title,
-      description: tool("journal_create_draft").description,
-      inputSchema: journalDraftInputSchema,
-      outputSchema: journalDraftSavedSchema,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: false,
-        openWorldHint: false
-      }
-    },
-    async (input: z.infer<typeof journalDraftInputSchema>) => {
-      const output = await client.createJournalDraft(input);
-      return {
-        content: [
-          { type: "text", text: `Created journal draft ${output.id} (${output.title}).` }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
   // ───────────── connector / archive ─────────────
 
   maybeTool(
@@ -473,130 +325,6 @@ export function createMcpGatewayServer(
       const output = await client.getConnectorStatus();
       return {
         content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "archive_status",
-    {
-      title: tool("archive_status").title,
-      description: tool("archive_status").description,
-      inputSchema: z.object({}),
-      outputSchema: archiveStatusSchema,
-      annotations: { readOnlyHint: true }
-    },
-    async () => {
-      const output = await client.getArchiveStatus();
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "archive_list",
-    {
-      title: tool("archive_list").title,
-      description: tool("archive_list").description,
-      inputSchema: archiveFileListInputSchema,
-      outputSchema: archiveFileListResultSchema,
-      annotations: { readOnlyHint: true }
-    },
-    async (input: z.infer<typeof archiveFileListInputSchema>) => {
-      const output = await client.listArchiveFiles(input);
-      const summary = output.items.map((i) => `${i.isDir ? "[dir]" : "[file]"} ${i.path}`).join("\n");
-      return {
-        content: [{ type: "text", text: summary || "Empty directory." }],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "archive_read",
-    {
-      title: tool("archive_read").title,
-      description: tool("archive_read").description,
-      inputSchema: archiveFileReadInputSchema,
-      outputSchema: archiveFileResultSchema,
-      annotations: { readOnlyHint: true }
-    },
-    async (input: z.infer<typeof archiveFileReadInputSchema>) => {
-      const output = await client.readArchiveFile(input);
-      return {
-        content: [{ type: "text", text: output.content }],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "archive_write",
-    {
-      title: tool("archive_write").title,
-      description: tool("archive_write").description,
-      inputSchema: archiveFileWriteInputSchema,
-      outputSchema: archiveFileWriteResultSchema,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false
-      }
-    },
-    async (input: z.infer<typeof archiveFileWriteInputSchema>) => {
-      const output = await client.writeArchiveFile(input);
-      return {
-        content: [
-          { type: "text", text: `${output.mode === "create" ? "Created" : "Updated"} ${output.path} (${output.size} bytes).` }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "archive_delete",
-    {
-      title: tool("archive_delete").title,
-      description: tool("archive_delete").description,
-      inputSchema: archiveFileDeleteInputSchema,
-      outputSchema: archiveFileDeleteResultSchema,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false
-      }
-    },
-    async (input: z.infer<typeof archiveFileDeleteInputSchema>) => {
-      const output = await client.deleteArchiveFile(input);
-      return {
-        content: [
-          { type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
-  maybeTool(
-    "archive_search",
-    {
-      title: tool("archive_search").title,
-      description: tool("archive_search").description,
-      inputSchema: archiveSearchInputSchema,
-      outputSchema: archiveSearchResultSchema,
-      annotations: { readOnlyHint: true }
-    },
-    async (input: z.infer<typeof archiveSearchInputSchema>) => {
-      const output = await client.searchArchive(input);
-      const preview = output.hits.map((h) => `[${h.path}] ${h.excerpt}`).join("\n\n");
-      return {
-        content: [{ type: "text", text: preview || `No results for "${output.query}".` }],
         structuredContent: output
       };
     }
@@ -1128,40 +856,6 @@ export async function runMcpToolSmokeTest(
 
   try {
     switch (toolId) {
-      case "profile_read_summary": {
-        const output = await client.getProfileSummary();
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `读取到 ${output.displayName} 的 profile summary。`,
-          preview: output.summary,
-          executedAt
-        });
-      }
-      case "context_recent": {
-        const output = await client.getRecentContext();
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `读取到 ${output.recentDraftTitles.length} 条最近 draft 提示。`,
-          preview: output.statusHints[0] ?? output.summary,
-          executedAt
-        });
-      }
-      case "journal_create_draft": {
-        const output = await client.createJournalDraft({
-          title: "Admin MCP smoke",
-          content: "Created through the admin control room smoke flow.",
-          source: "admin-mcp-test"
-        });
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `成功创建 draft ${output.id}。`,
-          preview: output.title,
-          executedAt
-        });
-      }
       case "health_summary": {
         const output = await client.getHealthSummary();
         return mcpToolTestResultSchema.parse({
@@ -1179,16 +873,6 @@ export async function runMcpToolSmokeTest(
           ok: true,
           summary: `连接器在线 ${output.summary.online}/${output.summary.total}。`,
           preview: output.connectors[0]?.name ?? "No connectors returned.",
-          executedAt
-        });
-      }
-      case "archive_status": {
-        const output = await client.getArchiveStatus();
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `Archive 状态：${output.status}。`,
-          preview: output.diaryPath ?? output.lastError,
           executedAt
         });
       }
@@ -1263,24 +947,6 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "archive_list": {
-        const output = await client.listArchiveFiles({});
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: `Archive 顶层：${output.items.length} 个条目。`,
-          preview: output.items.map((i) => i.name).join(", "),
-          executedAt
-        });
-      }
-      case "archive_read": {
-        const output = await client.readArchiveFile({ path: "Obsidian_Asashiki/00-索引.md" });
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: `读取 ${output.path}，${output.size} 字节。`,
-          preview: output.content.slice(0, 80),
-          executedAt
-        });
-      }
       case "okx_balance": {
         const output = await client.getOkxBalance();
         return mcpToolTestResultSchema.parse({
@@ -1308,23 +974,6 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "archive_search": {
-        const output = await client.searchArchive({ query: "日记", limit: 3 });
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: `搜索"日记"：${output.total} 条命中。`,
-          preview: output.hits[0]?.excerpt ?? "暂无结果。",
-          executedAt
-        });
-      }
-      case "archive_write":
-      case "archive_delete":
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: `${toolId} smoke test 跳过（避免改动真实文件）。`,
-          preview: null,
-          executedAt
-        });
       case "diary_write":
         return mcpToolTestResultSchema.parse({
           toolId,

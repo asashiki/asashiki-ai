@@ -655,6 +655,24 @@ export class AuthStore {
     return Number(res.changes) > 0;
   }
 
+  /**
+   * Drop local skill rows no longer present in the code (keeps the registry in
+   * sync with the catalog; prevents "ghost" tools lingering in the console).
+   * Remote rows are managed separately (by server add/remove).
+   */
+  reconcileLocalSkills(validIds: Set<string>): number {
+    const rows = this.db.prepare(`SELECT skill_id FROM skill_registry WHERE source = 'local'`).all() as { skill_id: string }[];
+    let removed = 0;
+    for (const r of rows) {
+      if (!validIds.has(r.skill_id)) {
+        this.db.prepare(`DELETE FROM skill_registry WHERE skill_id = ?`).run(r.skill_id);
+        this.db.prepare(`DELETE FROM skill_visibility WHERE skill_id = ?`).run(r.skill_id);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
   /** Set of enabled skill ids — used by tools/list filtering. */
   getEnabledSkillIds(): Set<string> {
     const rows = this.db.prepare(`SELECT skill_id FROM skill_registry WHERE enabled = 1`).all() as { skill_id: string }[];
