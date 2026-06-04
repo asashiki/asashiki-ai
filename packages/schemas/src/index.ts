@@ -538,24 +538,30 @@ export const healthRecordsQuerySchema = z.object({
 export type HealthRecordsQuery = z.infer<typeof healthRecordsQuerySchema>;
 
 export const diaryWriteInputSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  content: z.string().min(1).max(64 * 1024),
-  overwrite: z.boolean().optional()
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .describe("Diary date, YYYY-MM-DD."),
+  content: z
+    .string()
+    .min(1)
+    .max(64 * 1024)
+    .describe("Markdown content of the diary entry."),
+  mode: z
+    .enum(["create", "append", "replace"])
+    .default("create")
+    .describe("create=new entry (fails if exists); append=add to existing; replace=overwrite existing.")
 });
 
 export type DiaryWriteInput = z.infer<typeof diaryWriteInputSchema>;
 
-export const diaryUpdateInputSchema = z.object({
+export const diaryWriteResultSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  content: z.string().min(1).max(64 * 1024),
-  mode: z.enum(["replace", "append"]).default("replace")
-});
-
-export type DiaryUpdateInput = z.infer<typeof diaryUpdateInputSchema>;
-
-export const diaryWriteResultSchema = archiveDiaryEntryPreviewSchema.extend({
+  uri: z.string(),
   bytesWritten: z.number().int().nonnegative(),
-  mode: z.enum(["create", "replace", "append"])
+  mode: z.enum(["create", "append", "replace"]),
+  semanticStatus: z.string().optional(),
+  vectorStatus: z.string().optional()
 });
 
 export type DiaryWriteResult = z.infer<typeof diaryWriteResultSchema>;
@@ -880,11 +886,112 @@ export const voiceMessageSchema = z.object({
 });
 export type VoiceMessage = z.infer<typeof voiceMessageSchema>;
 
+// ─── Voice bubble (AI → in-chat playable voice message, claude.ai / ChatGPT) ──
+// Renders a Telegram-style voice bubble inside the conversation via MCP Apps UI.
+// Synthesized with the same Anna voice as the device-push path.
+export const voiceBubbleInputSchema = z.object({
+  text: z
+    .string()
+    .min(1)
+    .max(300)
+    .describe("Spoken text, 1-300 chars. Chinese works best. One or two short sentences are ideal."),
+  senderName: z
+    .string()
+    .min(1)
+    .max(60)
+    .optional()
+    .describe("Display name shown on the bubble. Defaults to 'Anna'.")
+});
+export type VoiceBubbleInput = z.infer<typeof voiceBubbleInputSchema>;
+
+export const voiceBubbleResultSchema = z.object({
+  audioUrl: z.string().url(),
+  mimeType: z.string(),
+  text: z.string(),
+  senderName: z.string(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  createdAt: z.string()
+});
+export type VoiceBubbleResult = z.infer<typeof voiceBubbleResultSchema>;
+
 export const voiceMessagesPendingSchema = z.object({
   fetchedAt: z.string(),
   messages: z.array(voiceMessageSchema)
 });
 export type VoiceMessagesPending = z.infer<typeof voiceMessagesPendingSchema>;
+
+// ─── X (Twitter) search via Hermes / xAI on LA VPS ───────────────────────────
+
+const xHandleSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(60)
+  .transform((s) => s.replace(/^@+/, ""));
+
+export const xSearchInputSchema = z
+  .object({
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .describe("Search query, e.g. 'claude code', '@asashiki_', 'AI agents'."),
+    limit: z
+      .coerce.number()
+      .int()
+      .min(1)
+      .max(20)
+      .optional()
+      .describe("Max results, 1-20. Default 10."),
+    allowedHandles: z
+      .array(xHandleSchema)
+      .max(10)
+      .optional()
+      .describe("Only return posts from these handles (no @). Max 10. Mutually exclusive with excludedHandles."),
+    excludedHandles: z
+      .array(xHandleSchema)
+      .max(10)
+      .optional()
+      .describe("Exclude posts from these handles. Max 10. Do not combine with allowedHandles."),
+    fromDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("Filter: posts on/after this date (YYYY-MM-DD)."),
+    toDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("Filter: posts on/before this date (YYYY-MM-DD)."),
+    enableImageUnderstanding: z
+      .boolean()
+      .optional()
+      .describe("Have the model analyze attached images. Default false; costs more and slower."),
+    enableVideoUnderstanding: z
+      .boolean()
+      .optional()
+      .describe("Have the model analyze attached videos. Default false; costs more and slower.")
+  })
+  .refine(
+    (v) => !(v.allowedHandles?.length && v.excludedHandles?.length),
+    { message: "Do not pass allowedHandles and excludedHandles together." }
+  );
+
+export type XSearchInput = z.infer<typeof xSearchInputSchema>;
+
+export const xSearchOutputSchema = z
+  .object({
+    success: z.boolean(),
+    query: z.string(),
+    results: z.array(z.unknown()).default([]),
+    meta: z.record(z.unknown()).optional(),
+    service: z.string().optional(),
+    error: z.string().optional()
+  })
+  .passthrough();
+
+export type XSearchOutput = z.infer<typeof xSearchOutputSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -3,9 +3,6 @@ import {
   locationCurrentSchema,
   locationHistorySchema,
   locationHistoryQueryInputSchema,
-  archiveDiaryEntrySchema,
-  archiveDiaryListSchema,
-  archiveDiaryReadInputSchema,
   archiveFileDeleteInputSchema,
   archiveFileDeleteResultSchema,
   okxAccountBalanceSchema,
@@ -28,10 +25,10 @@ import {
   deviceCurrentSchema,
   deviceTimelineInputSchema,
   deviceTimelineSchema,
-  diaryDeleteResultSchema,
-  diaryUpdateInputSchema,
   diaryWriteInputSchema,
   diaryWriteResultSchema,
+  voiceBubbleInputSchema,
+  voiceBubbleResultSchema,
   healthRecordsQueryInputSchema,
   healthRecordsQuerySchema,
   healthSummarySchema,
@@ -43,7 +40,9 @@ import {
   timeLogLookupResultSchema,
   timeLogRangeInputSchema,
   timeLogRangeSchema,
-  timeLogRecentSchema
+  timeLogRecentSchema,
+  xSearchInputSchema,
+  xSearchOutputSchema
 } from "@asashiki/schemas";
 import { z } from "zod";
 
@@ -138,34 +137,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       return archiveStatusSchema.parse(await response.json());
     },
 
-    async listDiaryEntries(limit = 20) {
-      const response = await fetch(
-        resolveUrl(baseUrl, `/api/archive/diary?limit=${limit}`)
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to list archive diary entries from Core API.");
-      }
-
-      return archiveDiaryListSchema.parse(await response.json());
-    },
-
-    async readDiaryEntry(input: unknown) {
-      const payload = archiveDiaryReadInputSchema.parse(input);
-      const response = await fetch(
-        resolveUrl(
-          baseUrl,
-          `/api/archive/diary/${encodeURIComponent(payload.date)}`
-        )
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to read archive diary entry from Core API.");
-      }
-
-      return archiveDiaryEntrySchema.parse(await response.json());
-    },
-
     async getRecentTimeLog(limit = 5) {
       const response = await fetch(
         resolveUrl(baseUrl, `/api/time-log/recent?limit=${limit}`)
@@ -232,7 +203,7 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
 
     async writeDiaryEntry(input: unknown) {
       const payload = diaryWriteInputSchema.parse(input);
-      const response = await fetch(resolveUrl(baseUrl, "/api/archive/diary"), {
+      const response = await fetch(resolveUrl(baseUrl, "/api/diary"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -248,41 +219,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       }
 
       return diaryWriteResultSchema.parse(await response.json());
-    },
-
-    async updateDiaryEntry(input: unknown) {
-      const payload = diaryUpdateInputSchema.parse(input);
-      const response = await fetch(
-        resolveUrl(baseUrl, `/api/archive/diary/${encodeURIComponent(payload.date)}`),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: payload.content, mode: payload.mode })
-        }
-      );
-
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(
-          typeof body.message === "string"
-            ? body.message
-            : "Failed to update diary entry via Core API."
-        );
-      }
-
-      return diaryWriteResultSchema.parse(await response.json());
-    },
-
-    async deleteDiaryEntry(date: string) {
-      const response = await fetch(
-        resolveUrl(baseUrl, `/api/archive/diary/${encodeURIComponent(date)}`),
-        { method: "DELETE" }
-      );
-      if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        throw new Error(typeof body.message === "string" ? body.message : "Delete failed.");
-      }
-      return diaryDeleteResultSchema.parse(await response.json());
     },
 
     async readArchiveFile(input: unknown) {
@@ -388,21 +324,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       return steamPlayerSummarySchema.parse(await res.json());
     },
 
-    async sendVoiceMessage(input: { deviceId: string; senderName: string; senderAvatarUrl?: string; text: string }) {
-      if (!adminToken) throw new Error("Admin token not configured for voice message send.");
-      const res = await fetch(resolveUrl(baseUrl, "/api/voice-messages"), {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${adminToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(input)
-      });
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
-      return body;
-    },
-
     async searchArchive(input: unknown) {
       const params = archiveSearchInputSchema.parse(input);
       const qs = new URLSearchParams({ query: params.query });
@@ -425,6 +346,86 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       const response = await fetch(resolveUrl(baseUrl, `/api/devices/timeline-query?${qs}`));
       if (!response.ok) throw new Error("Failed to fetch device timeline.");
       return deviceTimelineSchema.parse(await response.json());
+    },
+
+    async listRemoteMcpServers(): Promise<Array<{
+      id: string; name: string; url: string; description: string; status: string; lastError: string | null; toolCount: number;
+      tools: Array<{ name: string; title: string | null; description: string | null; readOnlyHint: boolean; inputSchema: Record<string, unknown> }>;
+    }>> {
+      const res = await fetch(resolveUrl(baseUrl, "/api/remote-mcp/servers"));
+      if (!res.ok) throw new Error("Failed to list remote MCP servers.");
+      return (await res.json()) as never;
+    },
+
+    async addRemoteServer(config: Record<string, unknown>) {
+      if (!adminToken) throw new Error("Admin token not configured.");
+      const res = await fetch(resolveUrl(baseUrl, "/api/remote-mcp/servers"), {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${adminToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(config)
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      return body;
+    },
+
+    async deleteRemoteServer(id: string) {
+      if (!adminToken) throw new Error("Admin token not configured.");
+      const res = await fetch(resolveUrl(baseUrl, `/api/remote-mcp/servers/${encodeURIComponent(id)}`), {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${adminToken}` }
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      }
+      return await res.json().catch(() => ({}));
+    },
+
+    async proxyRemoteMcpTool(serverId: string, toolName: string, args: Record<string, unknown>, allowWrite: boolean) {
+      const res = await fetch(
+        resolveUrl(baseUrl, `/api/remote-mcp/servers/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(toolName)}/proxy`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ arguments: args ?? {}, allowWrite })
+        }
+      );
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      return body as { content?: unknown[]; structuredContent?: unknown; isError?: boolean };
+    },
+
+    async createVoiceBubble(input: unknown) {
+      if (!adminToken) throw new Error("Admin token not configured for voice bubble.");
+      const params = voiceBubbleInputSchema.parse(input);
+      const res = await fetch(resolveUrl(baseUrl, "/api/voice-bubble"), {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${adminToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(params)
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) {
+        throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      }
+      return voiceBubbleResultSchema.parse(body);
+    },
+
+    async searchX(input: unknown) {
+      const params = xSearchInputSchema.parse(input);
+      const res = await fetch(resolveUrl(baseUrl, "/api/x-search"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params)
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) {
+        throw new Error(typeof body.message === "string" ? body.message : `HTTP ${res.status}`);
+      }
+      return xSearchOutputSchema.parse(body);
     },
 
     async getHealthRecords(input: unknown) {

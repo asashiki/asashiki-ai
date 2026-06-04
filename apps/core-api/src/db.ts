@@ -170,6 +170,19 @@ export function migrateDatabase(database: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS idx_voice_msgs_created
       ON voice_messages(created_at DESC);
 
+    CREATE TABLE IF NOT EXISTS remote_servers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      description TEXT NOT NULL,
+      bearer_token_env TEXT,
+      bearer_token TEXT,
+      headers_json TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
   `);
 }
 

@@ -112,21 +112,7 @@ test("mcp gateway lists tools and calls core-api-backed actions", async () => {
     });
     assert.equal(archiveStatus.isError, undefined);
 
-    const diaryList = await client.callTool({
-      name: "diary_list",
-      arguments: {
-        limit: 3
-      }
-    });
-    assert.equal(diaryList.isError, undefined);
-
-    const diaryEntry = await client.callTool({
-      name: "diary_read",
-      arguments: {
-        date: "2026-05-03"
-      }
-    });
-    assert.equal(diaryEntry.isError, undefined);
+    // diary_list / diary_read removed — agents use OpenViking directly.
 
     const timeLogLookup = await client.callTool({
       name: "time_log_lookup",

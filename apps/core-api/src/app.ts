@@ -2,7 +2,6 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { getOptionalEnvValue, parseServiceEnv } from "@asashiki/config";
 import {
-  archiveDiaryReadInputSchema,
   archiveFileDeleteInputSchema,
   archiveFileListInputSchema,
   archiveFileReadInputSchema,
@@ -14,9 +13,8 @@ import {
   createServiceHealth,
   deviceReportInputSchema,
   deviceTimelineInputSchema,
-  diaryDeleteResultSchema,
-  diaryUpdateInputSchema,
   diaryWriteInputSchema,
+  diaryWriteResultSchema,
   healthRecordsBatchInputSchema,
   healthRecordsQueryInputSchema,
   locationBatchInputSchema,
@@ -28,7 +26,8 @@ import {
   remoteMcpToolSchema,
   serviceManifestSchema,
   timeLogLookupInputSchema,
-  timeLogRangeInputSchema
+  timeLogRangeInputSchema,
+  xSearchInputSchema
 } from "@asashiki/schemas";
 import type { Connector } from "@asashiki/schemas";
 import { z } from "zod";
@@ -43,6 +42,8 @@ import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
 import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
 import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
 import { createSteamConnector, parseSteamEnv } from "./connectors/steam.js";
+import { createXSearchConnector, parseXSearchEnv } from "./connectors/x-search.js";
+import { createVikingConnector, parseVikingEnv, VikingError } from "./connectors/viking.js";
 import { fetchWeather, parseWeatherConfig } from "./connectors/weather.js";
 import { parseMinimaxConfig, synthesizeVoice } from "./connectors/minimax.js";
 import { createRepository } from "./repository.js";
@@ -162,8 +163,14 @@ export async function createCoreApiApp(options?: {
     rootPath: env.ASASHIKI_ARCHIVE_ROOT,
     diaryPath: env.ASASHIKI_DIARY_DIR
   });
+  const envRemoteServers = parseRemoteMcpServerConfigs(env.REMOTE_MCP_SERVERS_JSON);
   const remoteMcpRegistry = createRemoteMcpRegistry({
-    servers: parseRemoteMcpServerConfigs(env.REMOTE_MCP_SERVERS_JSON),
+    // Merge env-defined servers with console-managed DB rows (DB wins on id).
+    getServers: () => {
+      const dbServers = repository.listRemoteServerConfigs().filter((s) => s.enabled);
+      const dbIds = new Set(dbServers.map((s) => s.id));
+      return [...envRemoteServers.filter((s) => !dbIds.has(s.id)), ...dbServers];
+    },
     envSource: process.env
   });
   const supabaseTimeLog = createSupabaseTimeLogClient({
@@ -176,6 +183,10 @@ export async function createCoreApiApp(options?: {
   const okx = okxConfig ? createOkxConnector(okxConfig) : null;
   const steamConfig = parseSteamEnv(process.env);
   const steam = steamConfig ? createSteamConnector(steamConfig) : null;
+  const xSearchConfig = parseXSearchEnv(process.env);
+  const xSearch = xSearchConfig ? createXSearchConnector(xSearchConfig) : null;
+  const vikingConfig = parseVikingEnv(process.env);
+  const viking = vikingConfig ? createVikingConnector(vikingConfig) : null;
   const weatherConfig = parseWeatherConfig(process.env);
   const minimaxConfig = parseMinimaxConfig(process.env);
   const voiceDir = nodePath.join(nodePath.dirname(databasePath), "voice");
@@ -484,48 +495,40 @@ export async function createCoreApiApp(options?: {
   server.get("/api/archive/status", async () =>
     archiveStatusSchema.parse(archive.getStatus())
   );
-  server.get("/api/archive/diary", async (request, reply) => {
-    const query = z
-      .object({
-        limit: z.coerce.number().int().positive().max(100).default(20)
-      })
-      .parse(request.query);
-
-    try {
-      return archive.listDiaryEntries(query.limit);
-    } catch (error) {
-      reply.code(503);
-      return {
-        message:
-          error instanceof Error ? error.message : "Archive diary is unavailable."
-      };
-    }
-  });
-  server.get("/api/archive/diary/:date", async (request, reply) => {
-    const params = archiveDiaryReadInputSchema.parse(request.params);
-
-    try {
-      const entry = archive.readDiaryEntry(params.date);
-
-      if (!entry) {
-        reply.code(404);
-        return {
-          message: "Diary entry not found."
-        };
-      }
-
-      return entry;
-    } catch (error) {
-      reply.code(503);
-      return {
-        message:
-          error instanceof Error ? error.message : "Archive diary is unavailable."
-      };
-    }
-  });
   server.get("/api/remote-mcp/servers", async () =>
     remoteMcpServerSchema.array().parse(await remoteMcpRegistry.listServers())
   );
+  // Console-managed CRUD for remote server configs (admin token; gateway calls these).
+  server.post("/api/remote-mcp/servers", async (request, reply) => {
+    const password = getBasicPassword(request.headers.authorization);
+    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!(env.ADMIN_PANEL_TOKEN && (password === env.ADMIN_PANEL_TOKEN || bearer === env.ADMIN_PANEL_TOKEN))) {
+      reply.code(401); return { error: "Unauthorized" };
+    }
+    const body = z.object({
+      id: z.string().trim().min(1).regex(/^[a-z0-9-]+$/, "id: lowercase/digits/hyphen only"),
+      name: z.string().trim().min(1),
+      url: z.string().url(),
+      description: z.string().trim().min(1),
+      bearerTokenEnv: z.string().trim().min(1).optional(),
+      bearerToken: z.string().trim().min(1).optional(),
+      headers: z.record(z.string(), z.string()).optional(),
+      enabled: z.boolean().optional()
+    }).safeParse(request.body ?? {});
+    if (!body.success) { reply.code(400); return { error: body.error.issues.map((i) => i.message).join("; ") }; }
+    repository.upsertRemoteServerConfig(body.data);
+    return { ok: true, id: body.data.id };
+  });
+  server.delete("/api/remote-mcp/servers/:serverId", async (request, reply) => {
+    const password = getBasicPassword(request.headers.authorization);
+    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!(env.ADMIN_PANEL_TOKEN && (password === env.ADMIN_PANEL_TOKEN || bearer === env.ADMIN_PANEL_TOKEN))) {
+      reply.code(401); return { error: "Unauthorized" };
+    }
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    const deleted = repository.deleteRemoteServerConfig(serverId);
+    return { ok: true, deleted };
+  });
   server.get("/api/remote-mcp/servers/:serverId/tools", async (request) => {
     const params = z.object({ serverId: z.string().min(1) }).parse(request.params);
     return remoteMcpToolSchema
@@ -550,6 +553,26 @@ export async function createCoreApiApp(options?: {
           payload
         )
       );
+    }
+  );
+  // Full-result proxy (content + structuredContent), for the MCP gateway to
+  // forward remote tool calls to agents. Internal route (core-api is 127.0.0.1).
+  server.post(
+    "/api/remote-mcp/servers/:serverId/tools/:toolName/proxy",
+    async (request, reply) => {
+      const params = z
+        .object({ serverId: z.string().min(1), toolName: z.string().min(1) })
+        .parse(request.params);
+      try {
+        return await remoteMcpRegistry.invokeToolRaw(
+          params.serverId,
+          params.toolName,
+          request.body ?? {}
+        );
+      } catch (e) {
+        reply.code(502);
+        return { error: e instanceof Error ? e.message : "remote invoke failed" };
+      }
     }
   );
   server.get("/api/time-log/recent", async (request, reply) => {
@@ -657,50 +680,38 @@ export async function createCoreApiApp(options?: {
     repository.getHealthRecords(request.query)
   );
 
-  server.post("/api/archive/diary", async (request, reply) => {
-    const payload = diaryWriteInputSchema.parse(request.body ?? {});
+  // Diary write → OpenViking (viking://resources/diary/YYYY-MM-DD.md).
+  // Read/list/update/delete were removed in favor of agents using OpenViking
+  // search/read/forget directly. "update" is folded into write via mode=append|replace.
+  server.post("/api/diary", async (request, reply) => {
+    if (!viking) { reply.code(503); return { message: "OpenViking not configured." }; }
+    let payload;
     try {
-      return archive.writeDiaryEntry(payload.date, payload.content, {
-        overwrite: payload.overwrite ?? false
-      });
-    } catch (error) {
-      reply.code(409);
-      return {
-        message:
-          error instanceof Error ? error.message : "Diary write failed."
-      };
-    }
-  });
-
-  server.put("/api/archive/diary/:date", async (request, reply) => {
-    const params = z
-      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
-      .parse(request.params);
-    const body = diaryUpdateInputSchema
-      .omit({ date: true })
-      .parse(request.body ?? {});
-
-    try {
-      return archive.updateDiaryEntry(params.date, body.content, body.mode);
-    } catch (error) {
-      reply.code(404);
-      return {
-        message:
-          error instanceof Error ? error.message : "Diary update failed."
-      };
-    }
-  });
-
-  // DELETE diary entry
-  server.delete("/api/archive/diary/:date", async (request, reply) => {
-    const params = z
-      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
-      .parse(request.params);
-    try {
-      return archive.deleteDiaryEntry(params.date);
-    } catch (error) {
+      payload = diaryWriteInputSchema.parse(request.body ?? {});
+    } catch (e) {
       reply.code(400);
-      return { message: error instanceof Error ? error.message : "Delete failed." };
+      return { message: e instanceof Error ? e.message : "Invalid diary input." };
+    }
+    const uri = `viking://resources/diary/${payload.date}.md`;
+    try {
+      const result = await viking.writeContent(uri, payload.content, payload.mode);
+      return diaryWriteResultSchema.parse({
+        date: payload.date,
+        uri: result.uri,
+        bytesWritten: result.writtenBytes,
+        mode: result.mode,
+        semanticStatus: result.semanticStatus,
+        vectorStatus: result.vectorStatus
+      });
+    } catch (e) {
+      if (e instanceof VikingError) {
+        if (e.code === "NOT_FOUND") { reply.code(404); return { message: e.message }; }
+        if (e.code === "ALREADY_EXISTS") { reply.code(409); return { message: e.message }; }
+        if (e.code === "INVALID_ARGUMENT") { reply.code(400); return { message: e.message }; }
+        reply.code(502); return { message: e.message };
+      }
+      reply.code(502);
+      return { message: e instanceof Error ? e.message : "Diary write failed." };
     }
   });
 
@@ -1108,6 +1119,26 @@ export async function createCoreApiApp(options?: {
     catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "Steam error." }; }
   });
 
+  // X (Twitter) search — proxied to Hermes on LA VPS (POST /x-search Bearer auth).
+  // Backend is slow (Hermes serializes calls, ~tens of seconds per query). Treat
+  // this route as best-effort: it just forwards.
+  server.post("/api/x-search", async (request, reply) => {
+    if (!xSearch) { reply.code(503); return { message: "x-search not configured." }; }
+    let input;
+    try {
+      input = xSearchInputSchema.parse(request.body);
+    } catch (e) {
+      reply.code(400);
+      return { message: e instanceof Error ? e.message : "Invalid x-search input." };
+    }
+    try {
+      return await xSearch.search(input);
+    } catch (e) {
+      reply.code(502);
+      return { message: e instanceof Error ? e.message : "x-search error." };
+    }
+  });
+
   // ── Voice messages (AI → device push) ───────────────────────────────────
   // Static-serve generated MP3s. UUID filenames are unguessable.
   server.get("/voice/:filename", async (request, reply) => {
@@ -1144,6 +1175,49 @@ export async function createCoreApiApp(options?: {
         durationMs: undefined
       });
       return { ok: true, id: row.id, audioBytes: audio.length, createdAt: row.createdAt };
+    } catch (e) {
+      reply.code(500);
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  });
+
+  // Voice bubble: synthesize Anna voice and return a public audio URL for an
+  // in-chat playable bubble (claude.ai / ChatGPT via MCP Apps). Same MiniMax
+  // path as the device push, but the file is served publicly instead of queued.
+  server.post("/api/voice-bubble", async (request, reply) => {
+    const password = getBasicPassword(request.headers.authorization);
+    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    const authed = (env.ADMIN_PANEL_TOKEN && password === env.ADMIN_PANEL_TOKEN) ||
+                   (env.ADMIN_PANEL_TOKEN && bearer === env.ADMIN_PANEL_TOKEN);
+    if (!authed) { reply.code(401); return { error: "Unauthorized" }; }
+    if (!minimaxConfig) { reply.code(503); return { error: "MiniMax not configured" }; }
+
+    let input;
+    try {
+      input = (await import("@asashiki/schemas")).voiceBubbleInputSchema.parse(request.body ?? {});
+    } catch (e) {
+      reply.code(400);
+      return { error: e instanceof Error ? e.message : "Invalid voice-bubble input." };
+    }
+
+    try {
+      const audio = await synthesizeVoice(minimaxConfig, input.text);
+      const filename = `${randomUUID()}.mp3`;
+      nodeFs.writeFileSync(nodePath.join(voiceDir, filename), audio);
+
+      const publicBase = (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/$/, "");
+      const base = publicBase
+        ? `${publicBase}/voice`
+        : `${(request.headers["x-forwarded-proto"] as string) ?? "https"}://${(request.headers["x-forwarded-host"] as string) ?? request.headers.host ?? ""}/voice`;
+
+      return {
+        audioUrl: `${base}/${filename}`,
+        mimeType: "audio/mpeg",
+        text: input.text,
+        senderName: input.senderName ?? "Anna",
+        durationMs: null,
+        createdAt: new Date().toISOString()
+      };
     } catch (e) {
       reply.code(500);
       return { error: e instanceof Error ? e.message : String(e) };

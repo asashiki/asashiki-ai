@@ -54,7 +54,7 @@ Docker 中会只读挂载为：
 
 - profile / context / journal：`profile_read_summary`、`context_recent`、`journal_create_draft`
 - archive：`archive_status`、`archive_list`、`archive_read`、`archive_write`、`archive_delete`、`archive_search`
-- diary：`diary_list`、`diary_read`、`diary_write`、`diary_update`、`diary_delete`
+- diary：`diary_write`（写入 OpenViking `viking://resources/diary/`，含 create/append/replace；读/列表/删除直接走 OpenViking MCP）
 - connector：`connector_status`
 - time log：`time_log_lookup`、`time_log_range`
 - device：`device_status`、`device_activity_summary`、`device_timeline`
@@ -62,7 +62,20 @@ Docker 中会只读挂载为：
 - location / weather：`location_current`、`location_history`、`weather_current`
 - okx：`okx_balance`、`okx_positions`、`okx_assets`
 - steam：`steam_recent_games`、`steam_profile`
-- voice：`voice_send`
+- voice：`voice_bubble`（在 claude.ai / ChatGPT 对话窗口内渲染可播放的 Anna 声线语音气泡，经 MCP Apps UI；旧的 `voice_send` 推送到 Android App 的工具已不再对 AI 暴露，core-api 路由与设备轮询保留）
+- x (Twitter)：`x_search`（经 LA VPS Hermes + xAI，单次 ~30s）
+
+## MCP 鉴权（OAuth 2.1）
+
+`mcp-gateway` 支持类 OpenViking 的 OAuth 2.1 授权（设置 `MCP_PUBLIC_URL` 后启用）。
+
+- 受保护入口：`POST /mcp-oauth`（需 `Authorization: Bearer <access_token>`）
+- 匿名旧入口：`POST /mcp`（灰度期保留，测试通过后再切换/关闭）
+- 端点：`/.well-known/oauth-protected-resource`、`/.well-known/oauth-authorization-server`、`/register`、`/authorize`、`/oauth/consent`、`/oauth/approve`、`/token`、`/revoke`
+- 每个 Agent 有独立身份和密钥；授权页选择 Agent 并输入其 secret 绑定。token 不透明、仅存 SHA-256；refresh 单次轮换、重放撤销整链。
+- Agent 管理：`pnpm --filter @asashiki/mcp-gateway agents <seed|list|add|regen|enable|disable>`（容器内 `node dist/cli/agents.js ...`）。
+- 鉴权数据库：`MCP_AUTH_DB_PATH`（容器挂在 `mcp_gateway_data` 卷的 `/data/mcp-auth.sqlite`）。
+- 实现细节见 `apps/mcp-gateway/src/auth/`。
 
 ## 本地开发
 

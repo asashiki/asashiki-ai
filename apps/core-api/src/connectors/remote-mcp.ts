@@ -21,6 +21,7 @@ const remoteMcpServerConfigSchema = z.object({
   url: z.string().url(),
   description: z.string().trim().min(1),
   bearerTokenEnv: z.string().trim().min(1).optional(),
+  bearerToken: z.string().trim().min(1).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   enabled: z.boolean().default(true)
 });
@@ -84,13 +85,14 @@ function buildRequestHeaders(
     ...(config.headers ?? {})
   };
 
-  if (config.bearerTokenEnv) {
+  if (config.bearerToken) {
+    // Raw token stored in DB (console-added servers).
+    headers.Authorization = `Bearer ${config.bearerToken}`;
+  } else if (config.bearerTokenEnv) {
     const token = envSource[config.bearerTokenEnv];
-
     if (!token) {
       throw new Error(`Missing bearer token env: ${config.bearerTokenEnv}`);
     }
-
     headers.Authorization = `Bearer ${token}`;
   }
 
@@ -131,12 +133,16 @@ export function parseRemoteMcpServerConfigs(source?: string) {
 }
 
 export function createRemoteMcpRegistry(options: {
-  servers: RemoteMcpServerConfig[];
+  servers?: RemoteMcpServerConfig[];
+  getServers?: () => RemoteMcpServerConfig[];
   envSource: NodeJS.ProcessEnv;
   cacheTtlMs?: number;
 }) {
   const cacheTtlMs = options.cacheTtlMs ?? 2 * 60 * 1000;
   const cache = new Map<string, RemoteMcpServerSnapshot>();
+  // Resolve the current server list dynamically (env + console-managed DB rows).
+  const currentServers = (): RemoteMcpServerConfig[] =>
+    options.getServers ? options.getServers() : (options.servers ?? []);
 
   async function loadServerSummary(
     config: RemoteMcpServerConfig,
@@ -213,7 +219,7 @@ export function createRemoteMcpRegistry(options: {
   }
 
   function resolveServer(serverId: string) {
-    const config = options.servers.find((item) => item.id === serverId);
+    const config = currentServers().find((item) => item.id === serverId);
 
     if (!config) {
       throw new Error(`Unknown remote MCP server: ${serverId}`);
@@ -223,7 +229,7 @@ export function createRemoteMcpRegistry(options: {
   }
 
   async function listServers(force = false) {
-    return Promise.all(options.servers.map((server) => loadServerSummary(server, force)));
+    return Promise.all(currentServers().map((server) => loadServerSummary(server, force)));
   }
 
   async function listTools(serverId: string, force = false) {
@@ -310,6 +316,34 @@ export function createRemoteMcpRegistry(options: {
           executedAt
         });
       }
+    },
+
+    /**
+     * Invoke a remote tool and return the FULL result (content +
+     * structuredContent + isError), for proxying through the MCP gateway to
+     * agents. Same read-only guard as invokeTool.
+     */
+    async invokeToolRaw(
+      serverId: string,
+      toolName: string,
+      input: unknown
+    ): Promise<{ content: unknown[]; structuredContent: unknown; isError: boolean }> {
+      const payload = remoteMcpToolInvokeInputSchema.parse(input);
+      const config = resolveServer(serverId);
+      const tools = await listTools(serverId, true);
+      const tool = tools.find((item: RemoteMcpTool) => item.name === toolName);
+      if (!tool) throw new Error(`Remote MCP tool not found: ${toolName}`);
+      if (!tool.readOnlyHint && !payload.allowWrite) {
+        throw new Error(`Tool ${toolName} is not marked read-only. Set allowWrite=true to run it.`);
+      }
+      const result = await withRemoteClient(config, options.envSource, async (client) =>
+        client.callTool({ name: toolName, arguments: payload.arguments })
+      );
+      return {
+        content: "content" in result && Array.isArray(result.content) ? result.content : [],
+        structuredContent: "structuredContent" in result ? result.structuredContent : undefined,
+        isError: "isError" in result ? Boolean(result.isError) : false
+      };
     },
 
     async toConnectors(force = false): Promise<Connector[]> {

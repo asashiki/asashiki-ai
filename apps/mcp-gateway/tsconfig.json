@@ -9,6 +9,13 @@
     "src/app.ts",
     "src/core-api-client.ts",
     "src/mcp.ts",
-    "src/server.ts"
+    "src/server.ts",
+    "src/auth/tokens.ts",
+    "src/auth/store.ts",
+    "src/auth/routes.ts",
+    "src/cli/agents.ts",
+    "src/cli/console-admin.ts",
+    "src/console/console.ts",
+    "src/ui/voice-bubble-html.ts"
   ]
 }

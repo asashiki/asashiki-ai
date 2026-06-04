@@ -3,9 +3,6 @@ import {
   locationCurrentSchema,
   locationHistorySchema,
   locationHistoryQueryInputSchema,
-  archiveDiaryEntrySchema,
-  archiveDiaryListSchema,
-  archiveDiaryReadInputSchema,
   archiveFileDeleteInputSchema,
   archiveFileDeleteResultSchema,
   okxAccountBalanceSchema,
@@ -29,8 +26,6 @@ import {
   deviceCurrentSchema,
   deviceTimelineInputSchema,
   deviceTimelineSchema,
-  diaryDeleteResultSchema,
-  diaryUpdateInputSchema,
   diaryWriteInputSchema,
   diaryWriteResultSchema,
   healthRecordsQueryInputSchema,
@@ -45,10 +40,15 @@ import {
   timeLogLookupInputSchema,
   timeLogLookupResultSchema,
   timeLogRangeInputSchema,
-  timeLogRangeSchema
+  timeLogRangeSchema,
+  voiceBubbleInputSchema,
+  voiceBubbleResultSchema,
+  xSearchInputSchema,
+  xSearchOutputSchema
 } from "@asashiki/schemas";
 import { z } from "zod";
 import type { CoreApiClient } from "./core-api-client.js";
+import { VOICE_BUBBLE_URI, VOICE_BUBBLE_MIME, VOICE_AUDIO_ORIGINS, voiceBubbleHtml } from "./ui/voice-bubble-html.js";
 
 // All timestamps in core-api are UTC ISO. Render them in Shanghai for the
 // text content the model reads, while keeping structuredContent on raw UTC.
@@ -96,11 +96,7 @@ const mcpToolIds = [
   "archive_write",
   "archive_delete",
   "archive_search",
-  "diary_list",
-  "diary_read",
   "diary_write",
-  "diary_update",
-  "diary_delete",
   "time_log_lookup",
   "time_log_range",
   "device_status",
@@ -116,7 +112,8 @@ const mcpToolIds = [
   "okx_assets",
   "steam_recent_games",
   "steam_profile",
-  "voice_send"
+  "voice_bubble",
+  "x_search"
 ] as const;
 
 export const mcpToolIdSchema = z.enum(mcpToolIds);
@@ -185,33 +182,9 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
-    id: "diary_list",
-    title: "List Diary Entries",
-    description: "List recent diary entries from the Archive.",
-    readOnlyHint: true
-  },
-  {
-    id: "diary_read",
-    title: "Read Diary Entry",
-    description: "Read one diary entry by YYYY-MM-DD.",
-    readOnlyHint: true
-  },
-  {
     id: "diary_write",
     title: "Write Diary Entry",
-    description: "Create a new diary entry (YYYY-MM-DD.md).",
-    readOnlyHint: false
-  },
-  {
-    id: "diary_update",
-    title: "Update Diary Entry",
-    description: "Update an existing diary entry (replace or append).",
-    readOnlyHint: false
-  },
-  {
-    id: "diary_delete",
-    title: "Delete Diary Entry",
-    description: "Permanently delete a diary entry by date.",
+    description: "Write/append/replace a diary entry into OpenViking diary/.",
     readOnlyHint: false
   },
   {
@@ -305,10 +278,16 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
-    id: "voice_send",
-    title: "Send Voice Message",
-    description: "Send a TTS voice notification to the Android phone.",
+    id: "voice_bubble",
+    title: "Voice Message",
+    description: "Reply with a playable Anna-voice message bubble in the chat.",
     readOnlyHint: false
+  },
+  {
+    id: "x_search",
+    title: "X / Twitter Search",
+    description: "Search posts/profiles on X via Hermes+xAI. Slow (~30s).",
+    readOnlyHint: true
   }
 ]);
 
@@ -318,7 +297,87 @@ function tool(id: McpToolId) {
   return entry;
 }
 
-export function createMcpGatewayServer(client: CoreApiClient) {
+// Skill registry metadata: use-scenario category + initial enabled state.
+// Seeded into the gateway's skill_registry on startup; the console can later
+// flip `enabled`. `source` is 'local' for all current tools (remote-mcp
+// proxied tools will register here with source='remote-mcp' in a later phase).
+export const skillCategory = {
+  realtime: "realtime",   // 实时状态感知
+  action: "action",       // 动作/执行
+  search: "search",       // 检索（x_search + 未来社交检索）
+  finance: "finance",     // 资金/理财
+  profile: "profile",     // 个人画像
+  personal: "personal",   // 个人数据（迁 viking）
+  archive: "archive",     // 资料（退役，交给 OpenViking）
+  meta: "meta"            // 运维/元信息
+} as const;
+
+export const skillMeta: Record<McpToolId, { category: string; initialEnabled: boolean }> = {
+  profile_read_summary: { category: skillCategory.profile, initialEnabled: false },
+  context_recent: { category: skillCategory.profile, initialEnabled: false },
+  journal_create_draft: { category: skillCategory.action, initialEnabled: false },
+  connector_status: { category: skillCategory.meta, initialEnabled: true },
+  archive_status: { category: skillCategory.archive, initialEnabled: false },
+  archive_list: { category: skillCategory.archive, initialEnabled: false },
+  archive_read: { category: skillCategory.archive, initialEnabled: false },
+  archive_write: { category: skillCategory.archive, initialEnabled: false },
+  archive_delete: { category: skillCategory.archive, initialEnabled: false },
+  archive_search: { category: skillCategory.archive, initialEnabled: false },
+  diary_write: { category: skillCategory.action, initialEnabled: true },
+  time_log_lookup: { category: skillCategory.realtime, initialEnabled: true },
+  time_log_range: { category: skillCategory.realtime, initialEnabled: true },
+  device_status: { category: skillCategory.realtime, initialEnabled: true },
+  device_activity_summary: { category: skillCategory.realtime, initialEnabled: true },
+  device_timeline: { category: skillCategory.realtime, initialEnabled: true },
+  health_summary: { category: skillCategory.realtime, initialEnabled: true },
+  health_records: { category: skillCategory.realtime, initialEnabled: true },
+  location_current: { category: skillCategory.realtime, initialEnabled: true },
+  location_history: { category: skillCategory.realtime, initialEnabled: true },
+  weather_current: { category: skillCategory.realtime, initialEnabled: true },
+  okx_balance: { category: skillCategory.finance, initialEnabled: false },
+  okx_positions: { category: skillCategory.finance, initialEnabled: false },
+  okx_assets: { category: skillCategory.finance, initialEnabled: false },
+  steam_recent_games: { category: skillCategory.personal, initialEnabled: false },
+  steam_profile: { category: skillCategory.personal, initialEnabled: false },
+  voice_bubble: { category: skillCategory.action, initialEnabled: true },
+  x_search: { category: skillCategory.search, initialEnabled: true }
+};
+
+export interface RemoteToolDescriptor {
+  skillId: string;
+  title: string;
+  description: string | null;
+  serverId: string;
+  toolName: string;
+  inputSchema: Record<string, unknown>;
+  allowWrite: boolean;
+}
+
+// Shallow JSON-Schema → Zod raw shape: top-level properties become z.unknown()
+// (optional unless required), preserving param names/descriptions for tools/list.
+// Deep/typed conversion is a future refinement; values pass through to the remote.
+function jsonSchemaToRawShape(schema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  const props = (schema?.properties ?? {}) as Record<string, Record<string, unknown>>;
+  const required = Array.isArray(schema?.required) ? (schema.required as string[]) : [];
+  for (const [key, prop] of Object.entries(props)) {
+    let t: z.ZodTypeAny = z.unknown();
+    const desc = prop && typeof prop.description === "string" ? prop.description : undefined;
+    if (desc) t = t.describe(desc);
+    if (!required.includes(key)) t = t.optional();
+    shape[key] = t;
+  }
+  return shape;
+}
+
+export function createMcpGatewayServer(
+  client: CoreApiClient,
+  opts?: { enabledSkills?: Set<string>; remoteTools?: RemoteToolDescriptor[] }
+) {
+  const enabledSkills = opts?.enabledSkills;
+  // No registry passed (dev/test) → expose everything. Otherwise filter.
+  const isEnabled = (id: McpToolId | string) => !enabledSkills || enabledSkills.has(id);
+
   const server = new McpServer(
     {
       name: "asashiki-mcp-gateway",
@@ -330,9 +389,15 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
+  // Only register tools that are enabled in the registry (filtered tools/list).
+  const maybeTool: typeof server.registerTool = ((id: McpToolId, cfg: unknown, cb: unknown) => {
+    if (!isEnabled(id)) return undefined as never;
+    return (server.registerTool as unknown as (...a: unknown[]) => unknown)(id, cfg, cb) as never;
+  }) as typeof server.registerTool;
+
   // ───────────── profile / context / journal ─────────────
 
-  server.registerTool(
+  maybeTool(
     "profile_read_summary",
     {
       title: tool("profile_read_summary").title,
@@ -350,7 +415,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "context_recent",
     {
       title: tool("context_recent").title,
@@ -368,7 +433,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "journal_create_draft",
     {
       title: tool("journal_create_draft").title,
@@ -395,7 +460,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
 
   // ───────────── connector / archive ─────────────
 
-  server.registerTool(
+  maybeTool(
     "connector_status",
     {
       title: tool("connector_status").title,
@@ -413,7 +478,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "archive_status",
     {
       title: tool("archive_status").title,
@@ -431,7 +496,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "archive_list",
     {
       title: tool("archive_list").title,
@@ -450,7 +515,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "archive_read",
     {
       title: tool("archive_read").title,
@@ -468,7 +533,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "archive_write",
     {
       title: tool("archive_write").title,
@@ -493,7 +558,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "archive_delete",
     {
       title: tool("archive_delete").title,
@@ -518,7 +583,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "archive_search",
     {
       title: tool("archive_search").title,
@@ -538,46 +603,11 @@ export function createMcpGatewayServer(client: CoreApiClient) {
   );
 
   // ───────────── diary ─────────────
+  // Note: diary_read/list/update/delete were removed. Agents should use
+  // OpenViking search/read/forget on viking://resources/diary/ directly.
+  // diary_write covers create/append/replace via the mode parameter.
 
-  server.registerTool(
-    "diary_list",
-    {
-      title: tool("diary_list").title,
-      description: tool("diary_list").description,
-      inputSchema: z.object({
-        limit: z.coerce.number().int().positive().max(50).optional()
-      }),
-      outputSchema: archiveDiaryListSchema,
-      annotations: { readOnlyHint: true }
-    },
-    async (input: { limit?: number }) => {
-      const output = await client.listDiaryEntries(input.limit ?? 20);
-      return {
-        content: [{ type: "text", text: JSON.stringify(output, null, 2) }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "diary_read",
-    {
-      title: tool("diary_read").title,
-      description: tool("diary_read").description,
-      inputSchema: archiveDiaryReadInputSchema,
-      outputSchema: archiveDiaryEntrySchema,
-      annotations: { readOnlyHint: true }
-    },
-    async (input: z.infer<typeof archiveDiaryReadInputSchema>) => {
-      const output = await client.readDiaryEntry(input);
-      return {
-        content: [{ type: "text", text: output.content }],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
+  maybeTool(
     "diary_write",
     {
       title: tool("diary_write").title,
@@ -588,64 +618,14 @@ export function createMcpGatewayServer(client: CoreApiClient) {
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: false,
-        openWorldHint: false
+        openWorldHint: true
       }
     },
     async (input: z.infer<typeof diaryWriteInputSchema>) => {
       const output = await client.writeDiaryEntry(input);
       return {
         content: [
-          { type: "text", text: `Diary entry ${output.date} written (${output.mode}, ${output.bytesWritten} bytes).` }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "diary_update",
-    {
-      title: tool("diary_update").title,
-      description: tool("diary_update").description,
-      inputSchema: diaryUpdateInputSchema,
-      outputSchema: diaryWriteResultSchema,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false
-      }
-    },
-    async (input: z.infer<typeof diaryUpdateInputSchema>) => {
-      const output = await client.updateDiaryEntry(input);
-      return {
-        content: [
-          { type: "text", text: `Diary entry ${output.date} updated (${output.mode}, ${output.bytesWritten} bytes).` }
-        ],
-        structuredContent: output
-      };
-    }
-  );
-
-  server.registerTool(
-    "diary_delete",
-    {
-      title: tool("diary_delete").title,
-      description: tool("diary_delete").description,
-      inputSchema: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }),
-      outputSchema: diaryDeleteResultSchema,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-        openWorldHint: false
-      }
-    },
-    async (input: { date: string }) => {
-      const output = await client.deleteDiaryEntry(input.date);
-      return {
-        content: [
-          { type: "text", text: output.deleted ? `Deleted ${output.path}.` : `Not found: ${output.path}.` }
+          { type: "text", text: `Diary ${output.date} ${output.mode} → ${output.uri} (${output.bytesWritten} bytes).` }
         ],
         structuredContent: output
       };
@@ -654,7 +634,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
 
   // ───────────── time log / device / health ─────────────
 
-  server.registerTool(
+  maybeTool(
     "time_log_lookup",
     {
       title: tool("time_log_lookup").title,
@@ -672,7 +652,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "time_log_range",
     {
       title: tool("time_log_range").title,
@@ -701,7 +681,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "device_status",
     {
       title: tool("device_status").title,
@@ -719,7 +699,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "device_activity_summary",
     {
       title: tool("device_activity_summary").title,
@@ -739,7 +719,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "device_timeline",
     {
       title: tool("device_timeline").title,
@@ -767,7 +747,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "health_summary",
     {
       title: tool("health_summary").title,
@@ -785,7 +765,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "health_records",
     {
       title: tool("health_records").title,
@@ -816,7 +796,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
 
   // ───────────── location / weather ─────────────
 
-  server.registerTool(
+  maybeTool(
     "location_current",
     {
       title: tool("location_current").title,
@@ -840,7 +820,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "location_history",
     {
       title: tool("location_history").title,
@@ -868,7 +848,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "weather_current",
     {
       title: tool("weather_current").title,
@@ -894,7 +874,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
 
   // ───────────── okx ─────────────
 
-  server.registerTool(
+  maybeTool(
     "okx_balance",
     {
       title: tool("okx_balance").title,
@@ -913,7 +893,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "okx_positions",
     {
       title: tool("okx_positions").title,
@@ -934,7 +914,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "okx_assets",
     {
       title: tool("okx_assets").title,
@@ -957,7 +937,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
 
   // ───────────── steam ─────────────
 
-  server.registerTool(
+  maybeTool(
     "steam_recent_games",
     {
       title: tool("steam_recent_games").title,
@@ -978,7 +958,7 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  server.registerTool(
+  maybeTool(
     "steam_profile",
     {
       title: tool("steam_profile").title,
@@ -997,33 +977,145 @@ export function createMcpGatewayServer(client: CoreApiClient) {
     }
   );
 
-  // ───────────── voice ─────────────
+  // ───────────── voice (in-chat bubble via MCP Apps) ─────────────
+  // Note: the old voice_send (push TTS to the Android app) is intentionally
+  // no longer exposed to AI clients. Its core-api route + device polling stay
+  // intact for the app; only the MCP tool was removed. See README.
 
-  server.registerTool(
-    "voice_send",
+  // UI resource: the voice bubble widget (rendered by claude.ai / ChatGPT).
+  // The sandboxed iframe gets a strict CSP by default; declare the audio origin
+  // so the <audio> element can load the mp3. Two CSP namespaces are emitted:
+  //   - `ui.csp.{resourceDomains,connectDomains}`     — MCP Apps standard (Claude)
+  //   - `openai/widgetCSP.{resource_domains,connect_domains}` — ChatGPT alias (snake_case)
+  // Claude reads the first; ChatGPT only reads the second.
+  const voiceCsp = {
+    ui: {
+      csp: {
+        resourceDomains: VOICE_AUDIO_ORIGINS,
+        connectDomains: VOICE_AUDIO_ORIGINS
+      }
+    },
+    "openai/widgetCSP": {
+      resource_domains: VOICE_AUDIO_ORIGINS,
+      connect_domains: VOICE_AUDIO_ORIGINS
+    }
+  };
+  if (isEnabled("voice_bubble")) server.registerResource(
+    "voice-bubble",
+    VOICE_BUBBLE_URI,
     {
-      title: tool("voice_send").title,
-      description: tool("voice_send").description,
-      inputSchema: z.object({
-        deviceId: z.string().min(1).describe("Target device id, e.g. 'android-phone'"),
-        senderName: z.string().min(1).describe("Your AI name as it appears in the notification, e.g. 'Claude'"),
-        senderAvatarUrl: z.string().url().optional().describe("Optional avatar image URL"),
-        text: z.string().min(1).max(300).describe("Spoken text, 1-300 chars; Chinese works best. One sentence is ideal.")
-      }),
+      title: "Voice Bubble",
+      description: "Telegram-style playable voice message widget.",
+      mimeType: VOICE_BUBBLE_MIME,
+      _meta: voiceCsp
+    },
+    async () => ({
+      contents: [
+        {
+          uri: VOICE_BUBBLE_URI,
+          mimeType: VOICE_BUBBLE_MIME,
+          text: voiceBubbleHtml(),
+          _meta: voiceCsp
+        }
+      ]
+    })
+  );
+
+  maybeTool(
+    "voice_bubble",
+    {
+      title: tool("voice_bubble").title,
+      description: tool("voice_bubble").description,
+      inputSchema: voiceBubbleInputSchema,
+      outputSchema: voiceBubbleResultSchema,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
         openWorldHint: true
+      },
+      // Link this tool to the UI resource for both MCP Apps (Claude) and ChatGPT.
+      _meta: {
+        ui: { resourceUri: VOICE_BUBBLE_URI },
+        "openai/outputTemplate": VOICE_BUBBLE_URI
       }
     },
-    async (input) => {
-      const result = await client.sendVoiceMessage(input);
+    async (input: z.infer<typeof voiceBubbleInputSchema>) => {
+      const output = await client.createVoiceBubble(input);
       return {
-        content: [{ type: "text", text: `Voice message queued (id=${(result as any).id}, ${(result as any).audioBytes ?? "?"} bytes). Will be picked up by ${input.deviceId} on next poll (≤ 10s).` }]
+        content: [
+          { type: "text", text: `🎤 ${output.senderName}: ${output.text}` }
+        ],
+        structuredContent: output,
+        _meta: { ui: { resourceUri: VOICE_BUBBLE_URI } }
       };
     }
   );
+
+  // ───────────── x (twitter) ─────────────
+
+  maybeTool(
+    "x_search",
+    {
+      title: tool("x_search").title,
+      description: tool("x_search").description,
+      inputSchema: xSearchInputSchema,
+      outputSchema: xSearchOutputSchema,
+      annotations: { readOnlyHint: true, openWorldHint: true }
+    },
+    async (input: z.infer<typeof xSearchInputSchema>) => {
+      const output = await client.searchX(input);
+      const hits = Array.isArray(output.results) ? output.results : [];
+      const head = hits.slice(0, 5).map((r, i) => {
+        const rec = (r ?? {}) as Record<string, unknown>;
+        const type = typeof rec.type === "string" ? rec.type : "post";
+        const account = typeof rec.account === "string"
+          ? rec.account
+          : typeof rec.author_handle === "string"
+            ? `@${(rec.author_handle as string).replace(/^@+/, "")}`
+            : "?";
+        const text = typeof rec.text === "string"
+          ? rec.text
+          : typeof rec.bio === "string"
+            ? rec.bio
+            : JSON.stringify(rec).slice(0, 200);
+        return `${i + 1}. [${type}] ${account}: ${text.slice(0, 200)}`;
+      }).join("\n");
+      const summary = hits.length === 0
+        ? `No results for "${output.query}".${output.error ? ` (${output.error})` : ""}`
+        : `${hits.length} result(s) for "${output.query}":\n${head}`;
+      return {
+        content: [{ type: "text", text: summary }],
+        structuredContent: output
+      };
+    }
+  );
+
+  // ───────────── remote-mcp proxied tools (source='remote-mcp') ─────────────
+  // Pre-filtered by the caller to the agent's visible+enabled set. Each forwards
+  // to core-api's full-result proxy. Read-only only in v1 (allowWrite=false).
+  for (const rt of opts?.remoteTools ?? []) {
+    server.registerTool(
+      rt.skillId,
+      {
+        title: rt.title,
+        description: rt.description ?? `Remote tool ${rt.toolName} (via ${rt.serverId}).`,
+        inputSchema: jsonSchemaToRawShape(rt.inputSchema),
+        annotations: { openWorldHint: true }
+      },
+      async (args: Record<string, unknown>) => {
+        try {
+          const r = await client.proxyRemoteMcpTool(rt.serverId, rt.toolName, args ?? {}, rt.allowWrite);
+          const content = Array.isArray(r.content) && r.content.length
+            ? r.content
+            : [{ type: "text", text: typeof r.structuredContent !== "undefined" ? JSON.stringify(r.structuredContent) : "(no content)" }];
+          return { content: content as { type: "text"; text: string }[], structuredContent: r.structuredContent as Record<string, unknown> | undefined, isError: r.isError };
+        } catch (e) {
+          return { content: [{ type: "text" as const, text: `Remote tool failed: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
+        }
+      }
+    );
+  }
 
   return server;
 }
@@ -1097,41 +1189,6 @@ export async function runMcpToolSmokeTest(
           ok: true,
           summary: `Archive 状态：${output.status}。`,
           preview: output.diaryPath ?? output.lastError,
-          executedAt
-        });
-      }
-      case "diary_list": {
-        const output = await client.listDiaryEntries(5);
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `读取到 ${output.entries.length} 条日记索引。`,
-          preview: output.entries[0]?.title ?? "Archive diary is empty.",
-          executedAt
-        });
-      }
-      case "diary_read": {
-        const list = await client.listDiaryEntries(1);
-        const first = list.entries[0];
-
-        if (!first) {
-          return mcpToolTestResultSchema.parse({
-            toolId,
-            ok: false,
-            summary: "Archive 中没有可读取的日记文件。",
-            preview: null,
-            executedAt
-          });
-        }
-
-        const output = await client.readDiaryEntry({
-          date: first.date
-        });
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: `读取到 ${output.date} 的日记。`,
-          preview: output.excerpt,
           executedAt
         });
       }
@@ -1262,7 +1319,6 @@ export async function runMcpToolSmokeTest(
       }
       case "archive_write":
       case "archive_delete":
-      case "diary_delete":
         return mcpToolTestResultSchema.parse({
           toolId, ok: true,
           summary: `${toolId} smoke test 跳过（避免改动真实文件）。`,
@@ -1273,15 +1329,23 @@ export async function runMcpToolSmokeTest(
         return mcpToolTestResultSchema.parse({
           toolId,
           ok: true,
-          summary: "diary_write smoke test 跳过（避免产生真实文件）。",
+          summary: "diary_write smoke test 跳过（避免污染 viking 日记目录）。",
           preview: null,
           executedAt
         });
-      case "diary_update":
+      case "x_search":
         return mcpToolTestResultSchema.parse({
           toolId,
           ok: true,
-          summary: "diary_update smoke test 跳过（避免改动真实文件）。",
+          summary: "x_search smoke test 跳过（避免烧 xAI 配额，每次调用 ~30s）。",
+          preview: null,
+          executedAt
+        });
+      case "voice_bubble":
+        return mcpToolTestResultSchema.parse({
+          toolId,
+          ok: true,
+          summary: "voice_bubble smoke test 跳过（避免烧 MiniMax TTS 配额）。",
           preview: null,
           executedAt
         });

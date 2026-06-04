@@ -96,6 +96,43 @@ function getShanghaiDayRange(date: string) {
 
 export function createRepository(database: DatabaseSync) {
   return {
+    // ── Remote MCP server configs (console-managed; merged with env at runtime) ──
+    listRemoteServerConfigs() {
+      const rows = database.prepare(`SELECT * FROM remote_servers ORDER BY id`).all() as Record<string, unknown>[];
+      return rows.map((r) => ({
+        id: String(r.id),
+        name: String(r.name),
+        url: String(r.url),
+        description: String(r.description),
+        bearerTokenEnv: r.bearer_token_env ? String(r.bearer_token_env) : undefined,
+        bearerToken: r.bearer_token ? String(r.bearer_token) : undefined,
+        headers: r.headers_json ? (JSON.parse(String(r.headers_json)) as Record<string, string>) : undefined,
+        enabled: Number(r.enabled) === 1
+      }));
+    },
+    upsertRemoteServerConfig(input: {
+      id: string; name: string; url: string; description: string;
+      bearerTokenEnv?: string; bearerToken?: string; headers?: Record<string, string>; enabled?: boolean;
+    }) {
+      const now = new Date().toISOString();
+      database.prepare(`
+        INSERT INTO remote_servers (id, name, url, description, bearer_token_env, bearer_token, headers_json, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name=excluded.name, url=excluded.url, description=excluded.description,
+          bearer_token_env=excluded.bearer_token_env, bearer_token=excluded.bearer_token, headers_json=excluded.headers_json,
+          enabled=excluded.enabled, updated_at=excluded.updated_at
+      `).run(
+        input.id, input.name, input.url, input.description,
+        input.bearerTokenEnv ?? null, input.bearerToken ?? null,
+        input.headers ? JSON.stringify(input.headers) : null,
+        input.enabled === false ? 0 : 1, now, now
+      );
+    },
+    deleteRemoteServerConfig(id: string) {
+      const res = database.prepare(`DELETE FROM remote_servers WHERE id = ?`).run(id);
+      return Number(res.changes) > 0;
+    },
+
     getProfileSummary() {
       const row = database.prepare(`
         SELECT display_name, summary, preferences_json

@@ -31,6 +31,12 @@ services:
       MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
       MINIMAX_VOICE_ID: ${MINIMAX_VOICE_ID:-AnnaClone2026new}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      XSEARCH_ENDPOINT: ${XSEARCH_ENDPOINT:-}
+      XSEARCH_API_TOKEN: ${XSEARCH_API_TOKEN:-}
+      XSEARCH_TIMEOUT_SECONDS: ${XSEARCH_TIMEOUT_SECONDS:-240}
+      VIKING_API_BASE: ${VIKING_API_BASE:-}
+      VIKING_API_TOKEN: ${VIKING_API_TOKEN:-}
+      VIKING_TIMEOUT_SECONDS: ${VIKING_TIMEOUT_SECONDS:-30}
     ports:
       - "${CORE_API_BIND_HOST:-127.0.0.1}:${CORE_API_PORT:-4100}:${CORE_API_PORT:-4100}"
     volumes:
@@ -61,8 +67,13 @@ services:
       MCP_GATEWAY_PORT: ${MCP_GATEWAY_PORT:-4200}
       MCP_CORE_API_BASE_URL: ${MCP_CORE_API_BASE_URL:-http://core-api:4100}
       MCP_CORE_API_ADMIN_TOKEN: ${ADMIN_PANEL_TOKEN:-}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      MCP_AUTH_DB_PATH: ${MCP_AUTH_DB_PATH:-/data/mcp-auth.sqlite}
+      MCP_OAUTH_SCOPE: ${MCP_OAUTH_SCOPE:-tools:read tools:write x:search}
     ports:
       - "${MCP_GATEWAY_BIND_HOST:-127.0.0.1}:${MCP_GATEWAY_PORT:-4200}:${MCP_GATEWAY_PORT:-4200}"
+    volumes:
+      - mcp_gateway_data:/data
     depends_on:
       core-api:
         condition: service_healthy
@@ -81,3 +92,4 @@ services:
 
 volumes:
   core_api_data:
+  mcp_gateway_data:

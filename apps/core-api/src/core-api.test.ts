@@ -292,19 +292,8 @@ test("seeded core api serves profile, journals, remote mcp, connectors and audit
     assert.equal(archiveStatus.json().status, "online");
     assert.equal(archiveStatus.json().fileCount, 1);
 
-    const archiveDiary = await server.inject({
-      method: "GET",
-      url: "/api/archive/diary"
-    });
-    assert.equal(archiveDiary.statusCode, 200);
-    assert.equal(archiveDiary.json().entries[0].date, "2026-05-03");
-
-    const archiveDiaryEntry = await server.inject({
-      method: "GET",
-      url: "/api/archive/diary/2026-05-03"
-    });
-    assert.equal(archiveDiaryEntry.statusCode, 200);
-    assert.match(archiveDiaryEntry.json().content, /Archive 接入/);
+    // diary_read/list routes removed — agents use OpenViking directly now.
+    // POST /api/diary writes to OpenViking; tested separately when VIKING env is set.
 
     const remoteServers = await server.inject({
       method: "GET",
