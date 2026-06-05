@@ -55,7 +55,6 @@ function page(title: string, active: string, body: string): string {
 <style>${STYLE}</style></head><body>
 <header class="bar">
   <strong>Asashiki MCP</strong>
-  ${nav("/console/dashboard", "看板")}
   ${nav("/console/skills", "技能")}
   ${nav("/console/remote", "Remote")}
   ${nav("/console/agents", "Agents")}
@@ -108,84 +107,12 @@ export function registerConsoleRoutes(server: FastifyInstance, store: AuthStore,
   };
 
   // ── auth ──
-  server.get("/console", async (_req, reply) => reply.redirect("/console/dashboard"));
-
-  // ── dashboard (business-layer data, pulled server-side from core-api) ──
-  server.get("/console/dashboard", async (request, reply) => {
-    if (!guard(request, reply)) return reply;
-    const [dev, health, loc, weather, conn, timeline] = await Promise.allSettled([
-      client.getDeviceCurrent(),
-      client.getHealthSummary(),
-      client.getLocationCurrent(),
-      client.getWeather(),
-      client.getConnectorStatus(),
-      client.getDeviceTimeline({})
-    ]);
-    const val = <T,>(r: PromiseSettledResult<T>): T | null => (r.status === "fulfilled" ? r.value : null);
-    const sh = (iso: unknown) => {
-      if (typeof iso !== "string") return "—";
-      const d = new Date(iso); return isNaN(d.getTime()) ? "—" :
-        d.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
-    };
-
-    const d = val(dev) as { devices?: Array<Record<string, unknown>> } | null;
-    const devCard = (() => {
-      const list = d?.devices ?? [];
-      if (!list.length) return `<p class="muted">暂无设备上报。</p>`;
-      return `<table><tr><th>设备</th><th>状态</th><th>当前应用</th><th>电量</th><th>最近</th></tr>` +
-        list.map((x) => {
-          const extra = (x.extra ?? {}) as Record<string, unknown>;
-          const bat = extra.battery_percent;
-          return `<tr><td>${esc(x.deviceName)}<br><span class="muted">${esc(x.platform)}</span></td>
-          <td>${x.isOnline ? "🟢 在线" : "⚪ 离线"}</td><td>${esc(x.appId ?? "—")}</td>
-          <td>${bat != null ? esc(bat) + "%" : "—"}</td><td class="muted">${sh(x.lastSeenAt)}</td></tr>`;
-        }).join("") + `</table>`;
-    })();
-
-    const h = val(health) as { restingHeartRate?: number | null; sleepHours?: number | null; stepCount?: number | null; capturedAt?: string } | null;
-    const healthCard = h
-      ? `静息心率 <b>${h.restingHeartRate ?? "—"}</b> bpm · 睡眠 <b>${h.sleepHours ?? "—"}</b> h · 步数 <b>${h.stepCount ?? "—"}</b><br><span class="muted">${sh(h.capturedAt)}</span>`
-      : `<span class="muted">暂无健康数据。</span>`;
-
-    const l = val(loc) as { devices?: Array<Record<string, unknown>> } | null;
-    const locCard = (l?.devices?.length)
-      ? l.devices.map((p) => `${esc(p.deviceId)}: ${esc((p.lat as number)?.toFixed?.(4))}, ${esc((p.lon as number)?.toFixed?.(4))} <span class="muted">@ ${sh(p.recordedAt)}</span>`).join("<br>")
-      : `<span class="muted">暂无位置数据。</span>`;
-
-    const w = val(weather) as { location?: string; current?: Record<string, unknown> } | null;
-    const wCard = w?.current
-      ? `${esc(w.location)} <b>${esc(w.current.temperatureC)}°C</b>（体感 ${esc(w.current.feelsLikeC)}°C）${esc(w.current.description)} · 湿度 ${esc(w.current.humidity)}%`
-      : `<span class="muted">天气获取失败。</span>`;
-
-    const c = val(conn) as { summary?: { online?: number; total?: number }; connectors?: Array<Record<string, unknown>> } | null;
-    const connCard = c?.connectors?.length
-      ? `在线 <b>${c.summary?.online ?? "?"}/${c.summary?.total ?? "?"}</b><br>` +
-        c.connectors.map((x) => `<span class="tag">${esc(x.status)}</span> ${esc(x.name)}`).join(" ")
-      : `<span class="muted">无连接器。</span>`;
-
-    const t = val(timeline) as { date?: string; activities?: Array<Record<string, unknown>> } | null;
-    const tlCard = (() => {
-      const acts = t?.activities ?? [];
-      if (!acts.length) return `<span class="muted">今日暂无活动记录。</span>`;
-      return acts.slice(0, 15).map((a) => {
-        const mins = a.endedAt ? Math.max(1, Math.round((Date.parse(a.endedAt as string) - Date.parse(a.startedAt as string)) / 60000)) : null;
-        return `<span class="muted">${sh(a.startedAt)}</span> ${esc(a.appId)}${mins != null ? ` <span class="muted">(${mins}m)</span>` : ""}`;
-      }).join("<br>");
-    })();
-
-    reply.type("text/html");
-    return page("看板", "/console/dashboard",
-      `<h1>数据看板 <span class="muted">（来自 core-api，实时拉取）</span></h1>
-       <div class="card"><h2>设备状态</h2>${devCard}</div>
-       <div class="card"><h2>今日时间线</h2>${tlCard}</div>
-       <div class="card"><h2>健康</h2>${healthCard}</div>
-       <div class="card"><h2>位置</h2>${locCard}</div>
-       <div class="card"><h2>天气</h2>${wCard}</div>
-       <div class="card"><h2>连接器</h2>${connCard}</div>`);
-  });
+  // Note: the device/health/weather "数据看板" was removed — that's business-layer
+  // (api.asashiki.com) data for apps/widgets, not part of the AI control panel.
+  server.get("/console", async (_req, reply) => reply.redirect("/console/skills"));
 
   server.get("/console/login", async (request, reply) => {
-    if (sessionUser(request)) return reply.redirect("/console/dashboard");
+    if (sessionUser(request)) return reply.redirect("/console/skills");
     reply.type("text/html"); return loginPage();
   });
 
@@ -197,7 +124,7 @@ export function registerConsoleRoutes(server: FastifyInstance, store: AuthStore,
     const token = store.createConsoleSession(b.username, SESSION_TTL_SECONDS);
     setCookie(reply, token);
     store.audit({ action: "console_login", success: true, detail: b.username });
-    return reply.redirect("/console/dashboard");
+    return reply.redirect("/console/skills");
   });
 
   server.post("/console/logout", async (request, reply) => {
