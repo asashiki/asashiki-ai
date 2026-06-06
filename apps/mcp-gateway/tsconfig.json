@@ -20,6 +20,7 @@
     "src/cli/agents.ts",
     "src/cli/console-admin.ts",
     "src/console/console.ts",
+    "src/console/api.ts",
     "src/ui/voice-bubble-html.ts"
   ]
 }

@@ -15,6 +15,7 @@ import { AuthStore } from "./auth/store.js";
 import { registerOAuthRoutes } from "./auth/routes.js";
 import { parseBearer } from "./auth/tokens.js";
 import { registerConsoleRoutes } from "./console/console.js";
+import { registerConsoleApi } from "./console/api.js";
 
 export const mcpGatewayEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -25,7 +26,9 @@ export const mcpGatewayEnvSchema = z.object({
   // OAuth (optional — when MCP_PUBLIC_URL is unset, auth routes are not mounted).
   MCP_PUBLIC_URL: z.string().url().optional(),
   MCP_AUTH_DB_PATH: z.string().min(1).default("./data/mcp-auth.sqlite"),
-  MCP_OAUTH_SCOPE: z.string().min(1).default("tools:read tools:write x:search")
+  MCP_OAUTH_SCOPE: z.string().min(1).default("tools:read tools:write x:search"),
+  // Console SPA (decoupled frontend) CORS allowlist, comma-separated origins.
+  MCP_CONSOLE_CORS_ORIGINS: z.string().default("http://localhost:5173,http://localhost:3000")
 });
 
 export type McpGatewayEnv = z.infer<typeof mcpGatewayEnvSchema>;
@@ -46,7 +49,8 @@ export function loadMcpGatewayEnv(source: NodeJS.ProcessEnv): McpGatewayEnv {
       MCP_CORE_API_ADMIN_TOKEN: z.string().optional(),
       MCP_PUBLIC_URL: z.string().url().optional(),
       MCP_AUTH_DB_PATH: z.string().min(1).default("./data/mcp-auth.sqlite"),
-      MCP_OAUTH_SCOPE: z.string().min(1).default("tools:read tools:write x:search")
+      MCP_OAUTH_SCOPE: z.string().min(1).default("tools:read tools:write x:search"),
+      MCP_CONSOLE_CORS_ORIGINS: z.string().default("http://localhost:5173,http://localhost:3000")
     })
   );
 }
@@ -200,6 +204,13 @@ export async function createMcpGatewayApp(options?: {
     // routes. (The old admin-token /admin/skills API was removed: redundant.)
     registerConsoleRoutes(server, store, client, {
       secureCookie: env.NODE_ENV === "production",
+      rediscoverRemote: discoverRemoteSkills
+    });
+
+    // Decoupled JSON API for a standalone console frontend (e.g. Cowork-built).
+    registerConsoleApi(server, store, client, {
+      corsOrigins: env.MCP_CONSOLE_CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
+      sessionTtlSeconds: 7 * 24 * 3600,
       rediscoverRemote: discoverRemoteSkills
     });
 
