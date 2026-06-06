@@ -94,6 +94,8 @@ function getShanghaiDayRange(date: string) {
   };
 }
 
+export type Repository = ReturnType<typeof createRepository>;
+
 export function createRepository(database: DatabaseSync) {
   return {
     // ── Remote MCP server configs (console-managed; merged with env at runtime) ──
