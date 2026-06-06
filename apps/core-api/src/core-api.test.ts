@@ -332,3 +332,101 @@ test("seeded core api serves profile, journals, remote mcp, connectors and audit
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// Route-coverage guard: asserts every expected route is registered. This is the
+// safety net for splitting app.ts into route modules — if a split drops a route,
+// this test fails. Keep this list in sync when intentionally adding/removing routes.
+test("core-api registers all expected routes", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "asashiki-core-api-routes-"));
+  const env = loadCoreApiEnv({
+    NODE_ENV: "test",
+    CORE_API_HOST: "127.0.0.1",
+    CORE_API_PORT: "4100",
+    CORE_API_DB_PATH: join(directory, "core-api.sqlite"),
+    ADMIN_PANEL_TOKEN: "test-console-token"
+  });
+  const { server } = await createCoreApiApp({ env, logger: false, seed: true });
+
+  const expected: Array<[string, string]> = [
+    ["GET", "/health"],
+    ["GET", "/api/runtime"],
+    ["GET", "/api/profile/summary"],
+    ["PUT", "/api/profile/summary"],
+    ["GET", "/api/context/recent"],
+    ["GET", "/api/connectors"],
+    ["GET", "/api/connectors/summary"],
+    ["GET", "/api/audit/recent"],
+    ["GET", "/api/journals"],
+    ["POST", "/api/journals/drafts"],
+    ["GET", "/api/journals/drafts/:id"],
+    ["GET", "/api/archive/status"],
+    ["GET", "/api/archive/files"],
+    ["GET", "/api/archive/search"],
+    ["GET", "/api/archive/file"],
+    ["POST", "/api/archive/file"],
+    ["DELETE", "/api/archive/file"],
+    ["GET", "/api/devices/current"],
+    ["GET", "/api/devices/activity-summary"],
+    ["GET", "/api/devices/timeline"],
+    ["GET", "/api/devices/timeline-query"],
+    ["GET", "/api/devices/health"],
+    ["GET", "/api/devices/health-records"],
+    ["GET", "/api/devices/location/current"],
+    ["GET", "/api/devices/location/history"],
+    ["POST", "/api/devices/health"],
+    ["POST", "/api/devices/location"],
+    ["POST", "/api/devices/report"],
+    ["POST", "/api/devices/ios/app-event"],
+    ["POST", "/api/devices/ios/probe"],
+    ["POST", "/api/devices/ios/snapshot"],
+    ["GET", "/api/devices/voice-messages/pending"],
+    ["POST", "/api/devices/voice-messages/:id/delivered"],
+    ["POST", "/api/devices/voice-messages/:id/played"],
+    ["GET", "/api/health/latest"],
+    ["GET", "/api/health/summary"],
+    ["GET", "/api/time-log/recent"],
+    ["GET", "/api/time-log/lookup"],
+    ["GET", "/api/time-log/range"],
+    ["GET", "/api/weather"],
+    ["GET", "/api/okx/balance"],
+    ["GET", "/api/okx/positions"],
+    ["GET", "/api/okx/assets"],
+    ["GET", "/api/steam/profile"],
+    ["GET", "/api/steam/recent-games"],
+    ["GET", "/api/remote-mcp/servers"],
+    ["POST", "/api/remote-mcp/servers"],
+    ["DELETE", "/api/remote-mcp/servers/:serverId"],
+    ["GET", "/api/remote-mcp/servers/:serverId/tools"],
+    ["POST", "/api/remote-mcp/servers/:serverId/tools/:toolName/invoke"],
+    ["POST", "/api/remote-mcp/servers/:serverId/tools/:toolName/proxy"],
+    ["POST", "/api/diary"],
+    ["POST", "/api/voice-bubble"],
+    ["POST", "/api/voice-messages"],
+    ["POST", "/api/x-search"],
+    ["GET", "/voice/:filename"],
+    ["GET", "/public/cards"],
+    ["GET", "/public/status"],
+    ["GET", "/public/widget-config"],
+    ["POST", "/api/admin/backup-db"],
+    ["POST", "/api/admin/daily-digest"],
+    ["POST", "/api/admin/run-migrations"]
+  ];
+
+  try {
+    await server.ready();
+    for (const [method, url] of expected) {
+      assert.ok(
+        server.hasRoute({ method: method as "GET", url }),
+        `missing route: ${method} ${url}`
+      );
+    }
+    // Smoke a few dependency-free read routes.
+    for (const url of ["/health", "/api/runtime", "/api/connectors", "/api/devices/current"]) {
+      const res = await server.inject({ method: "GET", url });
+      assert.equal(res.statusCode, 200, `route ${url} should be 200`);
+    }
+  } finally {
+    await server.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
