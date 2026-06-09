@@ -29,8 +29,10 @@ class TrackingService : Service() {
     private lateinit var voicePoller: VoiceMessagePoller
 
     private var trackingJob: Job? = null
+    private var healthSyncJob: Job? = null
     private var lastSentKey = ""
     private var lastSuccessfulReportAt = 0L
+    private var lastHealthSyncAt = 0L
     private var lastNotificationText = ""
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -121,6 +123,39 @@ class TrackingService : Service() {
                 }
             }
         }
+
+        startHealthSyncLoop()
+    }
+
+    // Run health-data sync from inside the FGS so it inherits the wake lock +
+    // setAlarmClock watchdog. WorkManager's PeriodicWorkRequest is killed by
+    // MIUI/HyperOS when the app sits in the background for hours; this loop
+    // doesn't have that problem because the FGS is what keeps the process alive.
+    private fun startHealthSyncLoop() {
+        if (healthSyncJob?.isActive == true) return
+        healthSyncJob = serviceScope.launch {
+            // Kick once shortly after start so app launch produces fresh data
+            // without waiting a full interval.
+            delay(INITIAL_HEALTH_SYNC_DELAY_MS)
+            while (isActive) {
+                try {
+                    val settings = settingsStore.load()
+                    val intervalMs = settings.hcSyncIntervalMinutes.coerceAtLeast(15L) * 60_000L
+                    val now = System.currentTimeMillis()
+                    if (settings.hcSyncEnabled && now - lastHealthSyncAt >= intervalMs) {
+                        HealthSyncRunner.runOnce(this@TrackingService)
+                        lastHealthSyncAt = System.currentTimeMillis()
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    val msg = "健康同步异常：${t.javaClass.simpleName}: ${t.message}"
+                    settingsStore.appendLog(msg)
+                    android.util.Log.e("TrackingService", msg, t)
+                }
+                delay(HEALTH_SYNC_CHECK_INTERVAL_MS)
+            }
+        }
     }
 
     private suspend fun runOneTick() {
@@ -203,8 +238,11 @@ class TrackingService : Service() {
         if (BuildConfig.INCLUDE_CHAT) voicePoller.stop()
         trackingJob?.cancel()
         trackingJob = null
+        healthSyncJob?.cancel()
+        healthSyncJob = null
         lastSentKey = ""
         lastSuccessfulReportAt = 0L
+        lastHealthSyncAt = 0L
         lastNotificationText = ""
         releaseWakeLock()
         if (cancelWatchdog) {
@@ -353,5 +391,7 @@ class TrackingService : Service() {
         private const val NOTIFICATION_ID = 11031
         private const val DEFAULT_WATCHDOG_DELAY_MS = 120_000L
         private const val FORCE_REPORT_INTERVAL_MS = 50_000L
+        private const val INITIAL_HEALTH_SYNC_DELAY_MS = 30_000L
+        private const val HEALTH_SYNC_CHECK_INTERVAL_MS = 60_000L
     }
 }
