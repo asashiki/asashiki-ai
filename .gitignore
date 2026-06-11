@@ -7,3 +7,5 @@ dist
 coverage
 .env.production
 *.tsbuildinfo
+# 控制台 SPA 构建产物（docker build 时需在场，由 cowork-console-design 构建拷入）
+apps/mcp-gateway/console-web-dist/

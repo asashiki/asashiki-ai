@@ -160,3 +160,65 @@ test("remote: seed with meta, descriptors, allow-write, prune by server", (t) =>
   assert.equal(removed, 2);
   assert.equal(s.getRemoteDescriptors(new Set(["rmcp__srv__echo", "rmcp__srv__write"])).length, 0);
 });
+
+// ── console skill groups ──
+test("skill groups: per-user persistence, overwrite, empty default", (t) => {
+  const s = freshStore(t);
+  assert.deepEqual(s.getSkillGroups("asashiki"), []);
+  const groups = [
+    { id: "g1", name: "日常感知", order: 0, skillIds: ["device_status", "weather_current"] },
+    { id: "g2", name: "写作", order: 1, skillIds: ["diary_write"] }
+  ];
+  s.setSkillGroups("asashiki", groups);
+  assert.deepEqual(s.getSkillGroups("asashiki"), groups);
+  // overwrite replaces wholesale
+  s.setSkillGroups("asashiki", [groups[1]!]);
+  assert.deepEqual(s.getSkillGroups("asashiki"), [groups[1]]);
+  // other users isolated
+  assert.deepEqual(s.getSkillGroups("other"), []);
+});
+
+test("skill groups: merged name map (first claim wins) for tools/list prefixing", (t) => {
+  const s = freshStore(t);
+  assert.equal(s.getSkillGroupNameMap().size, 0);
+  s.setSkillGroups("asashiki", [
+    { id: "g1", name: "日常感知", order: 0, skillIds: ["device_status", "weather_current"] }
+  ]);
+  s.setSkillGroups("other", [
+    { id: "g9", name: "别名组", order: 0, skillIds: ["device_status", "x_search"] }
+  ]);
+  const map = s.getSkillGroupNameMap();
+  assert.equal(map.get("weather_current"), "日常感知");
+  assert.equal(map.get("x_search"), "别名组");
+  // both users claim device_status — first row wins, no throw
+  assert.ok(map.has("device_status"));
+});
+
+// ── audit stats ──
+test("audit stats: totals, latency percentiles, top tools, by agent, prev window", (t) => {
+  const s = freshStore(t);
+  s.seedSkill({ skillId: "device_status", title: "Device Status", category: "realtime", enabled: true });
+  s.upsertAgent("claude-ai", "Claude.ai");
+  for (let i = 0; i < 8; i++) {
+    s.audit({ agentId: "claude-ai", toolName: "device_status", action: "tool_call", success: true, latencyMs: 10 + i });
+  }
+  s.audit({ agentId: "claude-ai", toolName: "x_search", action: "tool_call", success: false, latencyMs: 900 });
+  s.audit({ action: "mcp_unauthorized", success: false });
+  s.audit({ agentId: "claude-ai", action: "mcp_request", success: true }); // not a tool_call → excluded
+
+  const st = s.auditStats(3600, 300);
+  assert.equal(st.totalCalls, 9);
+  assert.equal(st.errorCalls, 1);
+  assert.equal(st.unauthorizedCalls, 1);
+  assert.ok(st.p50LatencyMs >= 10 && st.p50LatencyMs <= 20);
+  assert.equal(st.p95LatencyMs, 900);
+  assert.equal(st.topTools[0]!.skillId, "device_status");
+  assert.equal(st.topTools[0]!.title, "Device Status", "joins skill_registry title");
+  assert.equal(st.topTools[0]!.count, 8);
+  assert.equal(st.byAgent[0]!.agentId, "claude-ai");
+  assert.equal(st.byAgent[0]!.count, 9);
+  assert.equal(st.timeline.reduce((a, b) => a + b.n, 0), 9, "timeline buckets sum to total");
+  // previous window has no data
+  const prev = s.auditStats(3600, 300, 3600);
+  assert.equal(prev.totalCalls, 0);
+});

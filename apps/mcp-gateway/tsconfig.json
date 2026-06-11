@@ -21,6 +21,7 @@
     "src/cli/console-admin.ts",
     "src/console/console.ts",
     "src/console/api.ts",
+    "src/console/spa.ts",
     "src/ui/voice-bubble-html.ts"
   ]
 }

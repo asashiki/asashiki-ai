@@ -16,6 +16,7 @@ import { registerOAuthRoutes } from "./auth/routes.js";
 import { parseBearer } from "./auth/tokens.js";
 import { registerConsoleRoutes } from "./console/console.js";
 import { registerConsoleApi } from "./console/api.js";
+import { registerConsoleSpa } from "./console/spa.js";
 
 export const mcpGatewayEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -109,7 +110,18 @@ export async function createMcpGatewayApp(options?: {
       : undefined;
     // Remote-mcp proxied tools that are enabled + visible for this agent.
     const remoteTools = authStore && enabledSkills ? authStore.getRemoteDescriptors(enabledSkills) : [];
-    const mcpServer = createMcpGatewayServer(client, { enabledSkills, remoteTools });
+    const store = authStore;
+    const mcpServer = createMcpGatewayServer(client, {
+      enabledSkills,
+      remoteTools,
+      // Console skill groups → tools/list title prefix, so the grouping shows
+      // up in claude.ai / ChatGPT / Grok after the client refreshes its tools.
+      groupNames: store ? store.getSkillGroupNameMap() : undefined,
+      onToolCall: store
+        ? (toolName, success, latencyMs) =>
+            store.audit({ agentId: agentId ?? null, toolName, action: "tool_call", success, latencyMs })
+        : undefined
+    });
 
     reply.raw.on("close", () => {
       transport.close();
@@ -157,7 +169,7 @@ export async function createMcpGatewayApp(options?: {
               source: "remote-mcp",
               enabled: false,
               description: tool.description ?? null,
-              remoteMeta: { serverId: s.id, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint }
+              remoteMeta: { serverId: s.id, serverName: s.name, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint }
             });
             seeded += 1;
           }
@@ -211,8 +223,16 @@ export async function createMcpGatewayApp(options?: {
     registerConsoleApi(server, store, client, {
       corsOrigins: env.MCP_CONSOLE_CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
       sessionTtlSeconds: 7 * 24 * 3600,
-      rediscoverRemote: discoverRemoteSkills
+      rediscoverRemote: discoverRemoteSkills,
+      startedAt
     });
+
+    // Standalone console SPA at /console (built separately; see console-web).
+    // Missing dist dir → routes simply not mounted (dev environments).
+    const spaDir = process.env.MCP_CONSOLE_WEB_DIR ?? "console-web-dist";
+    if (registerConsoleSpa(server, spaDir)) {
+      server.log.info(`console SPA mounted at /console from ${spaDir}`);
+    }
 
     server.addHook("onClose", async () => {
       store.close();

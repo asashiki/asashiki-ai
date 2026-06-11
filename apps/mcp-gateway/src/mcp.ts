@@ -156,34 +156,34 @@ function tool(id: McpToolId) {
   return entry;
 }
 
-// Skill registry metadata: use-scenario category + initial enabled state.
-// Seeded into the gateway's skill_registry on startup; the console can later
-// flip `enabled`. `source` is 'local' for all current tools (remote-mcp
-// proxied tools will register here with source='remote-mcp' in a later phase).
+// Skill registry metadata: FUNCTION category + initial enabled state.
+// Seeded into the gateway's skill_registry on startup (re-seed refreshes the
+// category, so renames here propagate); the console can later flip `enabled`.
+// The category is the auto "function" axis shown as a tag in the console —
+// the use-scenario axis is the user-edited skill groups, kept separate.
 export const skillCategory = {
-  realtime: "realtime",   // 实时状态感知
-  action: "action",       // 动作/执行
-  search: "search",       // 检索（x_search + 未来社交检索）
-  finance: "finance",     // 资金/理财
-  profile: "profile",     // 个人画像
-  personal: "personal",   // 个人数据（迁 viking）
-  archive: "archive",     // 资料（退役，交给 OpenViking）
+  sense: "sense",         // 实时感知：当下状态快照（设备/位置/天气/健康摘要）
+  history: "history",     // 历史回溯：时间线/区间/历史记录查询
+  action: "action",       // 动作输出：产生副作用（写日记/发语音泡）
+  search: "search",       // 对外检索（x_search + 未来社交检索）
+  finance: "finance",     // 资产/理财
+  personal: "personal",   // 个人档案（steam 等账号画像）
   meta: "meta"            // 运维/元信息
 } as const;
 
 export const skillMeta: Record<McpToolId, { category: string; initialEnabled: boolean }> = {
   connector_status: { category: skillCategory.meta, initialEnabled: true },
   diary_write: { category: skillCategory.action, initialEnabled: true },
-  time_log_lookup: { category: skillCategory.realtime, initialEnabled: true },
-  time_log_range: { category: skillCategory.realtime, initialEnabled: true },
-  device_status: { category: skillCategory.realtime, initialEnabled: true },
-  device_activity_summary: { category: skillCategory.realtime, initialEnabled: true },
-  device_timeline: { category: skillCategory.realtime, initialEnabled: true },
-  health_summary: { category: skillCategory.realtime, initialEnabled: true },
-  health_records: { category: skillCategory.realtime, initialEnabled: true },
-  location_current: { category: skillCategory.realtime, initialEnabled: true },
-  location_history: { category: skillCategory.realtime, initialEnabled: true },
-  weather_current: { category: skillCategory.realtime, initialEnabled: true },
+  time_log_lookup: { category: skillCategory.history, initialEnabled: true },
+  time_log_range: { category: skillCategory.history, initialEnabled: true },
+  device_status: { category: skillCategory.sense, initialEnabled: true },
+  device_activity_summary: { category: skillCategory.history, initialEnabled: true },
+  device_timeline: { category: skillCategory.history, initialEnabled: true },
+  health_summary: { category: skillCategory.sense, initialEnabled: true },
+  health_records: { category: skillCategory.history, initialEnabled: true },
+  location_current: { category: skillCategory.sense, initialEnabled: true },
+  location_history: { category: skillCategory.history, initialEnabled: true },
+  weather_current: { category: skillCategory.sense, initialEnabled: true },
   okx_balance: { category: skillCategory.finance, initialEnabled: false },
   okx_positions: { category: skillCategory.finance, initialEnabled: false },
   okx_assets: { category: skillCategory.finance, initialEnabled: false },
@@ -197,11 +197,33 @@ export const skillMeta: Record<McpToolId, { category: string; initialEnabled: bo
 // tools.ts; this wires the registry filter (maybeTool) + remote tools in.
 export function createMcpGatewayServer(
   client: CoreApiClient,
-  opts?: { enabledSkills?: Set<string>; remoteTools?: RemoteToolDescriptor[] }
+  opts?: {
+    enabledSkills?: Set<string>;
+    remoteTools?: RemoteToolDescriptor[];
+    /** Per-tool-call audit hook (toolName, success, latencyMs). */
+    onToolCall?: (toolName: string, success: boolean, latencyMs: number) => void;
+    /**
+     * skillId → console group name. MCP has no native grouping, so the group
+     * is surfaced as a title prefix (「组名」Title) in tools/list — clients
+     * (claude.ai / ChatGPT / Grok) pick it up on their next refresh.
+     */
+    groupNames?: Map<string, string>;
+  }
 ) {
   const enabledSkills = opts?.enabledSkills;
   // No registry passed (dev/test) → expose everything. Otherwise filter.
   const isEnabled = (id: McpToolId | string) => !enabledSkills || enabledSkills.has(id);
+
+  const groupNames = opts?.groupNames;
+  const groupedTool = (id: McpToolId) => {
+    const entry = tool(id);
+    const group = groupNames?.get(id);
+    return group ? { ...entry, title: `「${group}」${entry.title}` } : entry;
+  };
+  const remoteTools = (opts?.remoteTools ?? []).map((rt) => {
+    const group = groupNames?.get(rt.skillId);
+    return group ? { ...rt, title: `「${group}」${rt.title}` } : rt;
+  });
 
   const server = new McpServer(
     {
@@ -214,13 +236,36 @@ export function createMcpGatewayServer(
     }
   );
 
+  // Audit every tool invocation (local + remote) by wrapping registerTool's
+  // callback. MCP handled-errors surface as result.isError, not throws.
+  const onToolCall = opts?.onToolCall;
+  const origRegister = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
+  const auditedRegister = ((name: string, cfg: unknown, cb: (...a: unknown[]) => unknown) => {
+    const wrapped = onToolCall
+      ? async (...args: unknown[]) => {
+          const started = Date.now();
+          try {
+            const result = await cb(...args);
+            const isError = !!(result && typeof result === "object" && (result as { isError?: boolean }).isError);
+            onToolCall(name, !isError, Date.now() - started);
+            return result;
+          } catch (e) {
+            onToolCall(name, false, Date.now() - started);
+            throw e;
+          }
+        }
+      : cb;
+    return origRegister(name, cfg, wrapped);
+  }) as typeof server.registerTool;
+  (server as { registerTool: typeof server.registerTool }).registerTool = auditedRegister;
+
   // Only register tools that are enabled in the registry (filtered tools/list).
   const maybeTool: typeof server.registerTool = ((id: McpToolId, cfg: unknown, cb: unknown) => {
     if (!isEnabled(id)) return undefined as never;
     return (server.registerTool as unknown as (...a: unknown[]) => unknown)(id, cfg, cb) as never;
   }) as typeof server.registerTool;
 
-  registerTools(server, client, { maybeTool, isEnabled, tool, remoteTools: opts?.remoteTools ?? [] });
+  registerTools(server, client, { maybeTool, isEnabled, tool: groupedTool, remoteTools });
 
   return server;
 }

@@ -15,6 +15,8 @@ export interface ConsoleApiConfig {
   sessionTtlSeconds: number;
   /** Re-discover remote-MCP tools (called after add/remove). */
   rediscoverRemote?: () => Promise<{ seeded: number }>;
+  /** Gateway process start time (for /health uptime). */
+  startedAt?: Date;
 }
 
 export function registerConsoleApi(
@@ -35,7 +37,7 @@ export function registerConsoleApi(
     if (origin && allow.has(origin)) {
       reply.header("Access-Control-Allow-Origin", origin);
       reply.header("Vary", "Origin");
-      reply.header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+      reply.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
       reply.header("Access-Control-Allow-Headers", "Authorization,Content-Type");
       reply.header("Access-Control-Max-Age", "600");
     }
@@ -206,6 +208,105 @@ export function registerConsoleApi(
     const r = config.rediscoverRemote ? await config.rediscoverRemote() : { seeded: 0 };
     store.audit({ action: "remote_rediscover", success: true, detail: `${r.seeded} tools` });
     return { ok: true, seeded: r.seeded };
+  });
+
+  // ── skill groups (user-defined scene grouping; display-only preference) ──
+  server.get("/api/console/skill-groups", async (request, reply) => {
+    const user = auth(request, reply); if (!user) return reply;
+    return { groups: store.getSkillGroups(user) };
+  });
+
+  server.put("/api/console/skill-groups", async (request, reply) => {
+    const user = auth(request, reply); if (!user) return reply;
+    const b = (request.body ?? {}) as { groups?: unknown };
+    if (!Array.isArray(b.groups)) { reply.code(400); return { error: "groups (array) required" }; }
+    const seen = new Set<string>();
+    const groups = [];
+    for (const g of b.groups) {
+      const r = g as Record<string, unknown>;
+      if (typeof r.id !== "string" || typeof r.name !== "string" || !Array.isArray(r.skillIds)) {
+        reply.code(400); return { error: "each group needs id, name, skillIds[]" };
+      }
+      const skillIds = r.skillIds.filter((x): x is string => typeof x === "string" && !seen.has(x));
+      for (const id of skillIds) seen.add(id);
+      groups.push({ id: r.id, name: r.name, order: typeof r.order === "number" ? r.order : groups.length, skillIds });
+    }
+    store.setSkillGroups(user, groups);
+    return { ok: true };
+  });
+
+  // ── system health overview ──
+  server.get("/api/console/health", async (request, reply) => {
+    if (!auth(request, reply)) return reply;
+    const uptimeMs = config.startedAt ? Date.now() - config.startedAt.getTime() : 0;
+    const d = Math.floor(uptimeMs / 86_400_000);
+    const h = Math.floor((uptimeMs % 86_400_000) / 3_600_000);
+    const m = Math.floor((uptimeMs % 3_600_000) / 60_000);
+    const uptime = d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+
+    const connectors: Array<{ id: string; name: string; status: "ok" | "warn" | "err" | "disabled"; note?: string }> = [];
+    let coreApi: { ok: boolean; note?: string };
+    try {
+      const cs = await client.getConnectorStatus();
+      coreApi = { ok: true, note: `${cs.summary.online}/${cs.summary.total} 连接器在线` };
+      const statusMap = { online: "ok", degraded: "warn", offline: "err" } as const;
+      // core-api's connector list already includes remote-MCP servers (one
+      // connector per server, id `remote-mcp-<id>`) — label them instead of
+      // appending a second copy from listRemoteMcpServers (was duplicated).
+      for (const c of cs.connectors) {
+        const isRemote = c.id.startsWith("remote-mcp-");
+        connectors.push({
+          id: c.id, name: isRemote ? `Remote MCP: ${c.name}` : c.name, status: statusMap[c.status],
+          note: c.lastError ?? (c.lastSuccessAt ? `最近成功 ${c.lastSuccessAt}` : undefined)
+        });
+      }
+    } catch (e) {
+      coreApi = { ok: false, note: e instanceof Error ? e.message : "core-api unreachable" };
+    }
+    return { gateway: { ok: true, uptime }, coreApi, connectors };
+  });
+
+  // ── call-volume stats (aggregated from audit_log tool_call rows) ──
+  server.get("/api/console/stats", async (request, reply) => {
+    if (!auth(request, reply)) return reply;
+    const q = (request.query ?? {}) as { range?: string };
+    const ranges: Record<string, { windowSeconds: number; bucketSeconds: number }> = {
+      "1h": { windowSeconds: 3600, bucketSeconds: 300 },
+      "24h": { windowSeconds: 86_400, bucketSeconds: 3600 },
+      "7d": { windowSeconds: 604_800, bucketSeconds: 21_600 },
+      "30d": { windowSeconds: 2_592_000, bucketSeconds: 86_400 }
+    };
+    const fallback = { windowSeconds: 86_400, bucketSeconds: 3600 };
+    const range = q.range && ranges[q.range] ? q.range : "24h";
+    const { windowSeconds, bucketSeconds } = ranges[range] ?? fallback;
+    const cur = store.auditStats(windowSeconds, bucketSeconds);
+    const prev = store.auditStats(windowSeconds, bucketSeconds, windowSeconds);
+
+    const agents = new Map(store.listAgents().map((a) => [a.agentId, a.displayName]));
+    const byAgent = cur.byAgent.map((a) => ({
+      agentId: a.agentId,
+      displayName: agents.get(a.agentId) ?? a.agentId,
+      count: a.count,
+      pct: cur.totalCalls > 0 ? a.count / cur.totalCalls : 0
+    }));
+    const pctDelta = (now: number, before: number) => (before > 0 ? (now - before) / before : 0);
+
+    return {
+      range,
+      totalCalls: cur.totalCalls,
+      errorCalls: cur.errorCalls,
+      unauthorizedCalls: cur.unauthorizedCalls,
+      p50LatencyMs: cur.p50LatencyMs,
+      p95LatencyMs: cur.p95LatencyMs,
+      timeline: cur.timeline,
+      topTools: cur.topTools,
+      byAgent,
+      deltaVsPrev: {
+        totalCalls: pctDelta(cur.totalCalls, prev.totalCalls),
+        errorCalls: pctDelta(cur.errorCalls, prev.errorCalls),
+        p95LatencyMs: cur.p95LatencyMs - prev.p95LatencyMs
+      }
+    };
   });
 
   server.delete("/api/console/remote/:id", async (request, reply) => {

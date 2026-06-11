@@ -179,6 +179,12 @@ export class AuthStore {
         PRIMARY KEY (agent_id, skill_id)
       );
 
+      CREATE TABLE IF NOT EXISTS console_skill_groups (
+        username TEXT PRIMARY KEY,
+        groups_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_visibility_agent ON skill_visibility(agent_id);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_agent ON audit_log(agent_id, created_at DESC);
@@ -574,6 +580,133 @@ export class AuthStore {
     return rows;
   }
 
+  /**
+   * Aggregate tool-call stats over [cutoff, now) for the console overview.
+   * Counts `tool_call` audit rows (per-tool auditing; older `mcp_request`-only
+   * rows carry no tool_name and are excluded by design).
+   */
+  auditStats(windowSeconds: number, bucketSeconds: number, offsetSeconds = 0): {
+    totalCalls: number;
+    errorCalls: number;
+    unauthorizedCalls: number;
+    p50LatencyMs: number;
+    p95LatencyMs: number;
+    timeline: Array<{ t: number; n: number }>;
+    topTools: Array<{ skillId: string; title: string; count: number }>;
+    byAgent: Array<{ agentId: string; count: number }>;
+  } {
+    const nowMs = Date.now() - offsetSeconds * 1000;
+    const cutoff = new Date(nowMs - windowSeconds * 1000).toISOString();
+    const upper = new Date(nowMs).toISOString();
+
+    const totals = this.db.prepare(`
+      SELECT COUNT(*) AS total, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS errors
+      FROM audit_log WHERE action = 'tool_call' AND created_at >= ? AND created_at < ?
+    `).get(cutoff, upper) as { total: number; errors: number | null };
+
+    const unauthorized = this.db.prepare(`
+      SELECT COUNT(*) AS n FROM audit_log WHERE action = 'mcp_unauthorized' AND created_at >= ? AND created_at < ?
+    `).get(cutoff, upper) as { n: number };
+
+    const latencies = this.db.prepare(`
+      SELECT latency_ms FROM audit_log
+      WHERE action = 'tool_call' AND created_at >= ? AND created_at < ? AND latency_ms IS NOT NULL
+      ORDER BY latency_ms
+    `).all(cutoff, upper) as { latency_ms: number }[];
+    const pct = (p: number): number => {
+      if (latencies.length === 0) return 0;
+      const idx = Math.min(latencies.length - 1, Math.floor(latencies.length * p));
+      return latencies[idx]?.latency_ms ?? 0;
+    };
+
+    // Bucketed timeline; t = bucket start in epoch seconds.
+    const buckets = new Map<number, number>();
+    const windowStartSec = Math.floor((nowMs - windowSeconds * 1000) / 1000);
+    const calls = this.db.prepare(`
+      SELECT created_at FROM audit_log WHERE action = 'tool_call' AND created_at >= ? AND created_at < ?
+    `).all(cutoff, upper) as { created_at: string }[];
+    const lastBucket = Math.max(0, Math.ceil(windowSeconds / bucketSeconds) - 1);
+    for (const c of calls) {
+      const sec = Math.floor(new Date(c.created_at).getTime() / 1000);
+      const idx = Math.min(lastBucket, Math.max(0, Math.floor((sec - windowStartSec) / bucketSeconds)));
+      const t = windowStartSec + idx * bucketSeconds;
+      buckets.set(t, (buckets.get(t) ?? 0) + 1);
+    }
+    const timeline: Array<{ t: number; n: number }> = [];
+    for (let t = windowStartSec; t < Math.floor(nowMs / 1000); t += bucketSeconds) {
+      timeline.push({ t, n: buckets.get(t) ?? 0 });
+    }
+
+    const topTools = (this.db.prepare(`
+      SELECT a.tool_name AS skillId, COALESCE(s.title, a.tool_name) AS title, COUNT(*) AS count
+      FROM audit_log a LEFT JOIN skill_registry s ON s.skill_id = a.tool_name
+      WHERE a.action = 'tool_call' AND a.created_at >= ? AND a.created_at < ? AND a.tool_name IS NOT NULL
+      GROUP BY a.tool_name ORDER BY count DESC LIMIT 10
+    `).all(cutoff, upper) as Array<{ skillId: string; title: string; count: number }>);
+
+    const byAgent = (this.db.prepare(`
+      SELECT agent_id AS agentId, COUNT(*) AS count
+      FROM audit_log WHERE action = 'tool_call' AND created_at >= ? AND created_at < ? AND agent_id IS NOT NULL
+      GROUP BY agent_id ORDER BY count DESC
+    `).all(cutoff, upper) as Array<{ agentId: string; count: number }>);
+
+    return {
+      totalCalls: Number(totals.total),
+      errorCalls: Number(totals.errors ?? 0),
+      unauthorizedCalls: Number(unauthorized.n),
+      p50LatencyMs: pct(0.5),
+      p95LatencyMs: pct(0.95),
+      timeline,
+      topTools,
+      byAgent
+    };
+  }
+
+  // ── Console skill groups (user-defined scene grouping, display-only) ─────
+
+  getSkillGroups(username: string): Array<{ id: string; name: string; order: number; skillIds: string[] }> {
+    const row = this.db.prepare(`SELECT groups_json FROM console_skill_groups WHERE username = ?`).get(username) as
+      | { groups_json: string }
+      | undefined;
+    if (!row) return [];
+    try {
+      const parsed = JSON.parse(row.groups_json);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  setSkillGroups(username: string, groups: Array<{ id: string; name: string; order: number; skillIds: string[] }>): void {
+    this.db.prepare(`
+      INSERT INTO console_skill_groups (username, groups_json, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(username) DO UPDATE SET groups_json = excluded.groups_json, updated_at = excluded.updated_at
+    `).run(username, JSON.stringify(groups), nowIso());
+  }
+
+  /**
+   * skillId → group name across ALL console users (merged; first claim wins).
+   * Used to surface the console grouping in MCP tools/list (title prefix), so
+   * claude.ai / ChatGPT / Grok show the same grouping after a refresh.
+   */
+  getSkillGroupNameMap(): Map<string, string> {
+    const rows = this.db.prepare(`SELECT groups_json FROM console_skill_groups`).all() as { groups_json: string }[];
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      try {
+        const groups = JSON.parse(row.groups_json) as Array<{ name?: string; skillIds?: string[] }>;
+        if (!Array.isArray(groups)) continue;
+        for (const g of groups) {
+          if (typeof g?.name !== "string" || !Array.isArray(g?.skillIds)) continue;
+          for (const id of g.skillIds) {
+            if (typeof id === "string" && !map.has(id)) map.set(id, g.name);
+          }
+        }
+      } catch { /* skip malformed */ }
+    }
+    return map;
+  }
+
   // ── Skill registry ──────────────────────────────────────────────────────
 
   /**
@@ -588,7 +721,7 @@ export class AuthStore {
     enabled: boolean;
     description?: string | null;
     sortOrder?: number;
-    remoteMeta?: { serverId: string; toolName: string; inputSchema: Record<string, unknown>; readOnly?: boolean } | null;
+    remoteMeta?: { serverId: string; serverName?: string; toolName: string; inputSchema: Record<string, unknown>; readOnly?: boolean } | null;
   }): void {
     const remoteJson = input.remoteMeta ? JSON.stringify(input.remoteMeta) : null;
     const existing = this.db.prepare(`SELECT skill_id FROM skill_registry WHERE skill_id = ?`).get(input.skillId);
@@ -620,12 +753,19 @@ export class AuthStore {
     return out;
   }
 
-  listSkills(): Array<{ skillId: string; title: string; category: string; source: string; enabled: boolean; description: string | null; sortOrder: number; updatedAt: string; allowWrite: boolean; readOnly: boolean | null }> {
+  listSkills(): Array<{ skillId: string; title: string; category: string; source: string; enabled: boolean; description: string | null; sortOrder: number; updatedAt: string; allowWrite: boolean; readOnly: boolean | null; serverId: string | null; serverName: string | null }> {
     const rows = this.db.prepare(`SELECT * FROM skill_registry ORDER BY sort_order, skill_id`).all() as Record<string, unknown>[];
     return rows.map((r) => {
       let readOnly: boolean | null = null;
+      let serverId: string | null = null;
+      let serverName: string | null = null;
       if (r.remote_meta) {
-        try { const m = JSON.parse(String(r.remote_meta)); if (typeof m.readOnly === "boolean") readOnly = m.readOnly; } catch { /* ignore */ }
+        try {
+          const m = JSON.parse(String(r.remote_meta));
+          if (typeof m.readOnly === "boolean") readOnly = m.readOnly;
+          if (typeof m.serverId === "string") serverId = m.serverId;
+          if (typeof m.serverName === "string") serverName = m.serverName;
+        } catch { /* ignore */ }
       }
       return {
         skillId: String(r.skill_id),
@@ -637,7 +777,9 @@ export class AuthStore {
         sortOrder: Number(r.sort_order),
         updatedAt: String(r.updated_at),
         allowWrite: Number(r.allow_write) === 1,
-        readOnly
+        readOnly,
+        serverId,
+        serverName
       };
     });
   }
