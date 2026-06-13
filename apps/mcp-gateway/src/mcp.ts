@@ -183,14 +183,50 @@ export function createMcpGatewayServer(
     return group ? { ...rt, title: `「${group}」${rt.title}` } : rt;
   });
 
+  // MCP clients (claude.ai / ChatGPT / Grok) bucket tools by annotation in their
+  // permission UI — they can't render our custom groups there. So we surface the
+  // operator's console grouping in the server `instructions` instead: the model
+  // reads this on connect and knows which tools belong to which group, even though
+  // the permission list shows them flat. (Title also carries a「group」prefix.)
+  const buildInstructions = (): string => {
+    type Entry = { id: string; title: string; group: string };
+    const entries: Entry[] = [];
+    for (const t of mcpToolCatalog) {
+      if (!isEnabled(t.id)) continue;
+      entries.push({ id: t.id, title: t.title, group: groupNames?.get(t.id) ?? "未分组" });
+    }
+    for (const rt of opts?.remoteTools ?? []) {
+      entries.push({ id: rt.skillId, title: rt.title, group: groupNames?.get(rt.skillId) ?? "未分组" });
+    }
+    const byGroup = new Map<string, Entry[]>();
+    for (const e of entries) {
+      const arr = byGroup.get(e.group) ?? [];
+      arr.push(e);
+      byGroup.set(e.group, arr);
+    }
+    // Named groups first (operator intent), "未分组" last.
+    const groupOrder = [...byGroup.keys()].sort((a, b) =>
+      a === "未分组" ? 1 : b === "未分组" ? -1 : a.localeCompare(b, "zh"));
+    const lines = groupOrder.map((g) => {
+      const tools = byGroup.get(g)!.map((e) => `${e.id} (${e.title})`).join("、");
+      return `【${g}】${tools}`;
+    });
+    return [
+      "Asashiki MCP —— a personal capability hub (device/health/location/time-log/weather/diary/web-search, plus any connected remote tools).",
+      "Read safe summaries from the Core API and create journal drafts through the backend write path; remote tools are proxied as-is.",
+      "",
+      "The operator has organized the available tools into the following groups. Use these groupings to choose the right tool for a request:",
+      ...lines
+    ].join("\n");
+  };
+
   const server = new McpServer(
     {
       name: "asashiki-mcp-gateway",
       version: "0.1.0"
     },
     {
-      instructions:
-        "Use the exposed tools to read safe summaries from the Core API and create journal drafts through the backend write path."
+      instructions: buildInstructions()
     }
   );
 

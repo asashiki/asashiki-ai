@@ -153,9 +153,10 @@ export async function createMcpGatewayApp(options?: {
     // Drop local skills that no longer exist in the catalog (self-heal).
     store.reconcileLocalSkills(new Set(mcpToolCatalog.map((t) => t.id)));
 
-    // Discover remote-MCP tools and seed them DISABLED (opt-in). Reusable so the
-    // console can re-run it after add/remove. Non-fatal: a down/misconfigured
-    // remote server must not block startup.
+    // Discover remote-MCP tools and seed them ENABLED (added a server = you want
+    // its tools usable; writes are still gated by allow_write per tool). seedSkill
+    // never resets enabled on existing rows, so a console toggle-off survives
+    // re-discovery. Non-fatal: a down/misconfigured remote server won't block startup.
     const discoverRemoteSkills = async (): Promise<{ seeded: number }> => {
       let seeded = 0;
       try {
@@ -167,7 +168,7 @@ export async function createMcpGatewayApp(options?: {
               title: `${s.name}: ${tool.title ?? tool.name}`,
               category: "remote",
               source: "remote-mcp",
-              enabled: false,
+              enabled: true,
               description: tool.description ?? null,
               remoteMeta: { serverId: s.id, serverName: s.name, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint }
             });

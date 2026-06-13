@@ -223,6 +223,9 @@ export function registerConsoleApi(
         enabled: true
       });
       const r = config.rediscoverRemote ? await config.rediscoverRemote() : { seeded: 0 };
+      // 加了服务器就是要用它的工具——把该服务器的技能全部启用（包括之前残留的
+      // disabled 行），写工具仍受 allow_write 闸保护。
+      store.enableRemoteSkillsForServer(id);
       store.audit({ action: "remote_server_add", success: true, detail: id });
       // 探活一次：401/OAuth 要求 → 前端立即引导去授权
       let needsAuth = false;

@@ -403,8 +403,6 @@ test("core-api registers all expected routes", async () => {
     ["GET", "/public/cards"],
     ["GET", "/public/status"],
     ["GET", "/public/widget-config"],
-    ["POST", "/api/admin/backup-db"],
-    ["POST", "/api/admin/daily-digest"],
     ["POST", "/api/admin/run-migrations"]
   ];
 

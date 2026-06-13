@@ -795,6 +795,13 @@ export class AuthStore {
     });
   }
 
+  /** Enable all of a remote server's tools (called when the server is added). */
+  enableRemoteSkillsForServer(serverId: string): number {
+    const res = this.db.prepare(`UPDATE skill_registry SET enabled = 1, updated_at = ? WHERE source = 'remote-mcp' AND skill_id LIKE ?`)
+      .run(nowIso(), `rmcp__${serverId}__%`);
+    return Number(res.changes);
+  }
+
   /** Remove orphaned remote skills for a deleted server (prefix rmcp__<serverId>__). */
   pruneRemoteSkillsForServer(serverId: string): number {
     const prefix = `rmcp__${serverId}__`;
