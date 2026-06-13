@@ -483,8 +483,13 @@ export function registerTools(server: McpServer, client: CoreApiClient, ctx: Too
   // the widget HTML through the gateway. Reads are forwarded to the origin
   // server via core-api. _meta (e.g. iframe CSP) is relayed through.
   const readRemoteResource = ctx.readRemoteResource;
+  const seenResourceUris = new Set<string>();
   for (const rr of ctx.remoteResources ?? []) {
     if (!readRemoteResource) break;
+    // A URI can only be registered once; if two servers expose the same uri,
+    // first wins (rare — ui:// schemes are usually server-namespaced).
+    if (seenResourceUris.has(rr.uri)) continue;
+    seenResourceUris.add(rr.uri);
     server.registerResource(
       `rmcp-${rr.serverId}-${rr.uri}`,
       rr.uri,

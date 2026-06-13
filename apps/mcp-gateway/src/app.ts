@@ -56,6 +56,21 @@ export function loadMcpGatewayEnv(source: NodeJS.ProcessEnv): McpGatewayEnv {
   );
 }
 
+/**
+ * Extract widget/template resource URIs referenced by a tool's _meta, across
+ * the known MCP-Apps namespaces (Claude `ui.resourceUri`, ChatGPT
+ * `openai/outputTemplate`). Generic: no per-server knowledge.
+ */
+function resourceUrisFromMeta(meta: Record<string, unknown> | null | undefined): string[] {
+  if (!meta || typeof meta !== "object") return [];
+  const out: string[] = [];
+  const ui = meta.ui as { resourceUri?: unknown } | undefined;
+  if (ui && typeof ui.resourceUri === "string") out.push(ui.resourceUri);
+  const tmpl = meta["openai/outputTemplate"];
+  if (typeof tmpl === "string") out.push(tmpl);
+  return out;
+}
+
 export async function createMcpGatewayApp(options?: {
   env?: McpGatewayEnv;
   logger?: boolean;
@@ -168,6 +183,12 @@ export async function createMcpGatewayApp(options?: {
       try {
         const servers = await client.listRemoteMcpServers();
         for (const s of servers) {
+          // Collect UI resources to relay: those the server lists explicitly,
+          // PLUS any widget URI referenced from a tool's _meta but not listed
+          // (the spec allows on-demand resources). This makes UI passthrough work
+          // for any MCP without per-server config.
+          const resourceByUri = new Map<string, { uri: string; name?: string | null; title?: string | null; description?: string | null; mimeType?: string | null; meta?: Record<string, unknown> | null }>();
+          for (const r of s.resources ?? []) resourceByUri.set(r.uri, r);
           for (const tool of s.tools ?? []) {
             store.seedSkill({
               skillId: `rmcp__${s.id}__${tool.name}`,
@@ -179,9 +200,11 @@ export async function createMcpGatewayApp(options?: {
               remoteMeta: { serverId: s.id, serverName: s.name, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint, toolMeta: tool.meta ?? null }
             });
             seeded += 1;
+            for (const uri of resourceUrisFromMeta(tool.meta)) {
+              if (!resourceByUri.has(uri)) resourceByUri.set(uri, { uri });
+            }
           }
-          // Store the server's UI resources (MCP Apps widgets) for passthrough.
-          store.setRemoteResourcesForServer(s.id, s.resources ?? []);
+          store.setRemoteResourcesForServer(s.id, [...resourceByUri.values()]);
         }
       } catch (e) {
         server.log.warn(`remote-mcp discovery skipped: ${e instanceof Error ? e.message : e}`);
