@@ -12,8 +12,10 @@ import {
   remoteMcpServerSchema,
   remoteMcpToolInvokeInputSchema,
   remoteMcpToolInvokeResultSchema,
-  remoteMcpToolSchema
+  remoteMcpToolSchema,
+  remoteMcpResourceContentsSchema
 } from "@asashiki/schemas";
+import type { RemoteMcpResourceContents } from "@asashiki/schemas";
 import type {
   Connector,
   RemoteMcpServer,
@@ -148,6 +150,9 @@ function summarizeTool(tool: Record<string, unknown>, serverId: string) {
       )
     : [];
 
+  const meta = (tool._meta && typeof tool._meta === "object")
+    ? (tool._meta as Record<string, unknown>)
+    : null;
   return remoteMcpToolSchema.parse({
     serverId,
     name: typeof tool.name === "string" ? tool.name : "unknown-tool",
@@ -161,8 +166,22 @@ function summarizeTool(tool: Record<string, unknown>, serverId: string) {
         ? Boolean((tool.annotations as { readOnlyHint?: boolean }).readOnlyHint)
         : false,
     requiredArguments,
-    inputSchema
+    inputSchema,
+    meta
   });
+}
+
+function summarizeResource(resource: Record<string, unknown>) {
+  return {
+    uri: typeof resource.uri === "string" ? resource.uri : "",
+    name: typeof resource.name === "string" ? resource.name : null,
+    title: typeof resource.title === "string" ? resource.title : null,
+    description: typeof resource.description === "string" ? resource.description : null,
+    mimeType: typeof resource.mimeType === "string" ? resource.mimeType : null,
+    meta: (resource._meta && typeof resource._meta === "object")
+      ? (resource._meta as Record<string, unknown>)
+      : null
+  };
 }
 
 function buildPreview(value: unknown) {
@@ -285,13 +304,23 @@ export function createRemoteMcpRegistry(options: {
     const seenAt = new Date().toISOString();
 
     try {
-      const listed = await withRemoteClient(config, options.envSource, async (client) =>
-        client.listTools(), providerFor(config)
+      const { tools: rawTools, resources: rawResources } = await withRemoteClient(
+        config, options.envSource, async (client) => {
+          const t = await client.listTools();
+          // Resources are optional (MCP Apps widgets); a server may not support them.
+          let r: { resources?: unknown[] } = {};
+          const caps = client.getServerCapabilities();
+          if (caps?.resources) {
+            try { r = await client.listResources(); } catch { /* best-effort */ }
+          }
+          return { tools: t.tools, resources: r.resources ?? [] };
+        }, providerFor(config)
       );
 
-      const tools = listed.tools.map((tool: Record<string, unknown>) =>
+      const tools = rawTools.map((tool: Record<string, unknown>) =>
         summarizeTool(tool as Record<string, unknown>, config.id)
       );
+      const resources = (rawResources as Record<string, unknown>[]).map(summarizeResource);
       const summary = remoteMcpServerSchema.parse({
         id: config.id,
         name: config.name,
@@ -309,7 +338,8 @@ export function createRemoteMcpRegistry(options: {
           .length,
         writeToolCount: tools.filter((tool: RemoteMcpTool) => !tool.readOnlyHint)
           .length,
-        tools
+        tools,
+        resources
       });
 
       cache.set(config.id, {
@@ -508,7 +538,7 @@ export function createRemoteMcpRegistry(options: {
       serverId: string,
       toolName: string,
       input: unknown
-    ): Promise<{ content: unknown[]; structuredContent: unknown; isError: boolean }> {
+    ): Promise<{ content: unknown[]; structuredContent: unknown; isError: boolean; meta?: unknown }> {
       const payload = remoteMcpToolInvokeInputSchema.parse(input);
       const config = resolveServer(serverId);
       const tools = await listTools(serverId, true);
@@ -523,8 +553,28 @@ export function createRemoteMcpRegistry(options: {
       return {
         content: "content" in result && Array.isArray(result.content) ? result.content : [],
         structuredContent: "structuredContent" in result ? result.structuredContent : undefined,
-        isError: "isError" in result ? Boolean(result.isError) : false
+        isError: "isError" in result ? Boolean(result.isError) : false,
+        // Forward _meta (MCP Apps ui.resourceUri etc.) so the gateway can relay the widget.
+        meta: "_meta" in result ? (result as { _meta?: unknown })._meta : undefined
       };
+    },
+
+    /** Read a UI/template resource from a remote server (MCP Apps widget passthrough). */
+    async readResource(serverId: string, uri: string): Promise<RemoteMcpResourceContents> {
+      const config = resolveServer(serverId);
+      const result = await withRemoteClient(config, options.envSource, async (client) =>
+        client.readResource({ uri }), providerFor(config)
+      );
+      const contents = Array.isArray(result.contents) ? result.contents : [];
+      return remoteMcpResourceContentsSchema.parse({
+        contents: contents.map((c: Record<string, unknown>) => ({
+          uri: typeof c.uri === "string" ? c.uri : uri,
+          mimeType: typeof c.mimeType === "string" ? c.mimeType : null,
+          text: typeof c.text === "string" ? c.text : null,
+          blob: typeof c.blob === "string" ? c.blob : null,
+          meta: (c._meta && typeof c._meta === "object") ? (c._meta as Record<string, unknown>) : null
+        }))
+      });
     },
 
     async toConnectors(force = false): Promise<Connector[]> {

@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerTools, type RemoteToolDescriptor } from "./tools.js";
+import { registerTools, type RemoteToolDescriptor, type RemoteResourceDescriptor } from "./tools.js";
 import { mcpToolCatalogSchema } from "@asashiki/schemas";
 import { z } from "zod";
 import type { CoreApiClient } from "./core-api-client.js";
@@ -158,6 +158,10 @@ export function createMcpGatewayServer(
   opts?: {
     enabledSkills?: Set<string>;
     remoteTools?: RemoteToolDescriptor[];
+    /** UI resources exposed by remote servers (MCP Apps widgets), for passthrough. */
+    remoteResources?: RemoteResourceDescriptor[];
+    /** Reads a remote server's resource by uri (forwarded via core-api). */
+    readRemoteResource?: (serverId: string, uri: string) => Promise<{ contents: Array<{ uri: string; mimeType?: string | null; text?: string | null; blob?: string | null; meta?: unknown }> }>;
     /** Per-tool-call audit hook (toolName, success, latencyMs). */
     onToolCall?: (toolName: string, success: boolean, latencyMs: number) => void;
     /**
@@ -259,7 +263,11 @@ export function createMcpGatewayServer(
     return (server.registerTool as unknown as (...a: unknown[]) => unknown)(id, cfg, cb) as never;
   }) as typeof server.registerTool;
 
-  registerTools(server, client, { maybeTool, isEnabled, tool: groupedTool, remoteTools });
+  registerTools(server, client, {
+    maybeTool, isEnabled, tool: groupedTool, remoteTools,
+    remoteResources: opts?.remoteResources ?? [],
+    readRemoteResource: opts?.readRemoteResource
+  });
 
   return server;
 }

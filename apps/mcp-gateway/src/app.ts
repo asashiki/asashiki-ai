@@ -111,9 +111,15 @@ export async function createMcpGatewayApp(options?: {
     // Remote-mcp proxied tools that are enabled + visible for this agent.
     const remoteTools = authStore && enabledSkills ? authStore.getRemoteDescriptors(enabledSkills) : [];
     const store = authStore;
+    // UI resources (MCP Apps widgets) for the servers whose tools are exposed,
+    // so remote tool UIs render through the gateway.
+    const remoteServerIds = new Set(remoteTools.map((t) => t.serverId));
+    const remoteResources = store ? store.getRemoteResourcesForServers(remoteServerIds) : [];
     const mcpServer = createMcpGatewayServer(client, {
       enabledSkills,
       remoteTools,
+      remoteResources,
+      readRemoteResource: (serverId, uri) => client.readRemoteResource(serverId, uri),
       // Console skill groups → tools/list title prefix, so the grouping shows
       // up in claude.ai / ChatGPT / Grok after the client refreshes its tools.
       groupNames: store ? store.getSkillGroupNameMap() : undefined,
@@ -170,10 +176,12 @@ export async function createMcpGatewayApp(options?: {
               source: "remote-mcp",
               enabled: true,
               description: tool.description ?? null,
-              remoteMeta: { serverId: s.id, serverName: s.name, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint }
+              remoteMeta: { serverId: s.id, serverName: s.name, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint, toolMeta: tool.meta ?? null }
             });
             seeded += 1;
           }
+          // Store the server's UI resources (MCP Apps widgets) for passthrough.
+          store.setRemoteResourcesForServer(s.id, s.resources ?? []);
         }
       } catch (e) {
         server.log.warn(`remote-mcp discovery skipped: ${e instanceof Error ? e.message : e}`);

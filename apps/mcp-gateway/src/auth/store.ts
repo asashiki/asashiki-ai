@@ -185,6 +185,20 @@ export class AuthStore {
         updated_at TEXT NOT NULL
       );
 
+      -- UI/template resources exposed by remote MCP servers (MCP Apps widgets),
+      -- relayed to agents so remote tool UIs render through the gateway.
+      CREATE TABLE IF NOT EXISTS remote_resources (
+        server_id TEXT NOT NULL,
+        uri TEXT NOT NULL,
+        name TEXT,
+        title TEXT,
+        description TEXT,
+        mime_type TEXT,
+        meta_json TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (server_id, uri)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_visibility_agent ON skill_visibility(agent_id);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_audit_agent ON audit_log(agent_id, created_at DESC);
@@ -731,7 +745,7 @@ export class AuthStore {
     enabled: boolean;
     description?: string | null;
     sortOrder?: number;
-    remoteMeta?: { serverId: string; serverName?: string; toolName: string; inputSchema: Record<string, unknown>; readOnly?: boolean } | null;
+    remoteMeta?: { serverId: string; serverName?: string; toolName: string; inputSchema: Record<string, unknown>; readOnly?: boolean; toolMeta?: Record<string, unknown> | null } | null;
   }): void {
     const remoteJson = input.remoteMeta ? JSON.stringify(input.remoteMeta) : null;
     const existing = this.db.prepare(`SELECT skill_id FROM skill_registry WHERE skill_id = ?`).get(input.skillId);
@@ -749,7 +763,7 @@ export class AuthStore {
   }
 
   /** Remote-tool descriptors for the given enabled+visible skill ids. */
-  getRemoteDescriptors(ids: Set<string>): Array<{ skillId: string; title: string; description: string | null; serverId: string; toolName: string; inputSchema: Record<string, unknown>; allowWrite: boolean }> {
+  getRemoteDescriptors(ids: Set<string>): Array<{ skillId: string; title: string; description: string | null; serverId: string; toolName: string; inputSchema: Record<string, unknown>; allowWrite: boolean; meta: Record<string, unknown> | null }> {
     if (ids.size === 0) return [];
     const rows = this.db.prepare(`SELECT skill_id, title, description, remote_meta, allow_write FROM skill_registry WHERE source = 'remote-mcp' AND remote_meta IS NOT NULL`).all() as Record<string, unknown>[];
     const out = [];
@@ -757,8 +771,8 @@ export class AuthStore {
       const id = String(r.skill_id);
       if (!ids.has(id)) continue;
       try {
-        const m = JSON.parse(String(r.remote_meta)) as { serverId: string; toolName: string; inputSchema: Record<string, unknown> };
-        out.push({ skillId: id, title: String(r.title), description: r.description ? String(r.description) : null, serverId: m.serverId, toolName: m.toolName, inputSchema: m.inputSchema ?? {}, allowWrite: Number(r.allow_write) === 1 });
+        const m = JSON.parse(String(r.remote_meta)) as { serverId: string; toolName: string; inputSchema: Record<string, unknown>; toolMeta?: Record<string, unknown> | null };
+        out.push({ skillId: id, title: String(r.title), description: r.description ? String(r.description) : null, serverId: m.serverId, toolName: m.toolName, inputSchema: m.inputSchema ?? {}, allowWrite: Number(r.allow_write) === 1, meta: m.toolMeta ?? null });
       } catch { /* skip malformed */ }
     }
     return out;
@@ -793,6 +807,44 @@ export class AuthStore {
         serverName
       };
     });
+  }
+
+  /** Replace the stored UI resources for a remote server (set at discovery time). */
+  setRemoteResourcesForServer(serverId: string, resources: Array<{ uri: string; name?: string | null; title?: string | null; description?: string | null; mimeType?: string | null; meta?: Record<string, unknown> | null }>): void {
+    this.db.prepare(`DELETE FROM remote_resources WHERE server_id = ?`).run(serverId);
+    const stmt = this.db.prepare(`INSERT OR REPLACE INTO remote_resources (server_id, uri, name, title, description, mime_type, meta_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const now = nowIso();
+    for (const r of resources) {
+      if (!r.uri) continue;
+      stmt.run(serverId, r.uri, r.name ?? null, r.title ?? null, r.description ?? null, r.mimeType ?? null, r.meta ? JSON.stringify(r.meta) : null, now);
+    }
+  }
+
+  /** All UI resources for the given remote server ids (for MCP Apps passthrough). */
+  getRemoteResourcesForServers(serverIds: Set<string>): Array<{ serverId: string; uri: string; name: string | null; title: string | null; description: string | null; mimeType: string | null; meta: Record<string, unknown> | null }> {
+    if (serverIds.size === 0) return [];
+    const rows = this.db.prepare(`SELECT * FROM remote_resources`).all() as Record<string, unknown>[];
+    const out = [];
+    for (const r of rows) {
+      const serverId = String(r.server_id);
+      if (!serverIds.has(serverId)) continue;
+      let meta: Record<string, unknown> | null = null;
+      if (r.meta_json) { try { meta = JSON.parse(String(r.meta_json)); } catch { /* ignore */ } }
+      out.push({
+        serverId, uri: String(r.uri),
+        name: r.name ? String(r.name) : null,
+        title: r.title ? String(r.title) : null,
+        description: r.description ? String(r.description) : null,
+        mimeType: r.mime_type ? String(r.mime_type) : null,
+        meta
+      });
+    }
+    return out;
+  }
+
+  pruneRemoteResourcesForServer(serverId: string): number {
+    const res = this.db.prepare(`DELETE FROM remote_resources WHERE server_id = ?`).run(serverId);
+    return Number(res.changes);
   }
 
   /** Enable all of a remote server's tools (called when the server is added). */

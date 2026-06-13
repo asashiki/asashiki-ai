@@ -66,6 +66,18 @@ export interface RemoteToolDescriptor {
   toolName: string;
   inputSchema: Record<string, unknown>;
   allowWrite: boolean;
+  /** Tool-definition _meta (MCP Apps ui.resourceUri / openai outputTemplate). */
+  meta?: Record<string, unknown> | null;
+}
+
+export interface RemoteResourceDescriptor {
+  serverId: string;
+  uri: string;
+  name: string | null;
+  title: string | null;
+  description: string | null;
+  mimeType: string | null;
+  meta: Record<string, unknown> | null;
 }
 
 function jsonSchemaToRawShape(schema: Record<string, unknown>): Record<string, z.ZodTypeAny> {
@@ -87,6 +99,8 @@ export interface ToolContext {
   isEnabled: (id: string) => boolean;
   tool: (id: McpToolId) => { title: string; description: string };
   remoteTools: RemoteToolDescriptor[];
+  remoteResources?: RemoteResourceDescriptor[];
+  readRemoteResource?: (serverId: string, uri: string) => Promise<{ contents: Array<{ uri: string; mimeType?: string | null; text?: string | null; blob?: string | null; meta?: unknown }> }>;
 }
 
 /** Registers all gateway tools on the given MCP server (filtered via ctx). */
@@ -464,9 +478,44 @@ export function registerTools(server: McpServer, client: CoreApiClient, ctx: Too
     }
   );
 
+  // ───────────── remote-mcp UI resources (MCP Apps widgets) ─────────────
+  // Register each remote server's UI resource so claude.ai / ChatGPT can fetch
+  // the widget HTML through the gateway. Reads are forwarded to the origin
+  // server via core-api. _meta (e.g. iframe CSP) is relayed through.
+  const readRemoteResource = ctx.readRemoteResource;
+  for (const rr of ctx.remoteResources ?? []) {
+    if (!readRemoteResource) break;
+    server.registerResource(
+      `rmcp-${rr.serverId}-${rr.uri}`,
+      rr.uri,
+      {
+        title: rr.title ?? rr.name ?? rr.uri,
+        description: rr.description ?? `Remote UI resource from ${rr.serverId}.`,
+        ...(rr.mimeType ? { mimeType: rr.mimeType } : {}),
+        ...(rr.meta ? { _meta: rr.meta } : {})
+      },
+      async (uri) => {
+        const target = typeof uri === "string" ? uri : uri.href;
+        const r = await readRemoteResource(rr.serverId, target);
+        const contents = r.contents.map((c) => {
+          const base = {
+            uri: c.uri ?? target,
+            ...(c.mimeType ? { mimeType: c.mimeType } : {}),
+            ...(c.meta ? { _meta: c.meta as Record<string, unknown> } : {})
+          };
+          // SDK requires text XOR blob per content item.
+          if (typeof c.blob === "string") return { ...base, blob: c.blob };
+          return { ...base, text: typeof c.text === "string" ? c.text : "" };
+        });
+        return { contents };
+      }
+    );
+  }
+
   // ───────────── remote-mcp proxied tools (source='remote-mcp') ─────────────
   // Pre-filtered by the caller to the agent's visible+enabled set. Each forwards
   // to core-api's full-result proxy. Read-only only in v1 (allowWrite=false).
+  // Tool-definition _meta and result _meta are relayed so MCP Apps UIs render.
   for (const rt of ctx.remoteTools) {
     server.registerTool(
       rt.skillId,
@@ -474,7 +523,8 @@ export function registerTools(server: McpServer, client: CoreApiClient, ctx: Too
         title: rt.title,
         description: rt.description ?? `Remote tool ${rt.toolName} (via ${rt.serverId}).`,
         inputSchema: jsonSchemaToRawShape(rt.inputSchema),
-        annotations: { openWorldHint: true }
+        annotations: { openWorldHint: true },
+        ...(rt.meta ? { _meta: rt.meta } : {})
       },
       async (args: Record<string, unknown>) => {
         try {
@@ -482,7 +532,12 @@ export function registerTools(server: McpServer, client: CoreApiClient, ctx: Too
           const content = Array.isArray(r.content) && r.content.length
             ? r.content
             : [{ type: "text", text: typeof r.structuredContent !== "undefined" ? JSON.stringify(r.structuredContent) : "(no content)" }];
-          return { content: content as { type: "text"; text: string }[], structuredContent: r.structuredContent as Record<string, unknown> | undefined, isError: r.isError };
+          return {
+            content: content as { type: "text"; text: string }[],
+            structuredContent: r.structuredContent as Record<string, unknown> | undefined,
+            isError: r.isError,
+            ...(r.meta ? { _meta: r.meta as Record<string, unknown> } : {})
+          };
         } catch (e) {
           return { content: [{ type: "text" as const, text: `Remote tool failed: ${e instanceof Error ? e.message : String(e)}` }], isError: true };
         }

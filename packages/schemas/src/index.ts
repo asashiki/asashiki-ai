@@ -282,10 +282,25 @@ export const remoteMcpToolSchema = z.object({
   description: z.string().nullable(),
   readOnlyHint: z.boolean(),
   requiredArguments: z.array(z.string().min(1)).max(24),
-  inputSchema: z.record(z.string(), z.unknown())
+  inputSchema: z.record(z.string(), z.unknown()),
+  /** Tool-definition _meta (e.g. MCP Apps ui.resourceUri / openai outputTemplate). */
+  meta: z.record(z.string(), z.unknown()).nullable().optional()
 });
 
 export type RemoteMcpTool = z.infer<typeof remoteMcpToolSchema>;
+
+/** A UI/template resource exposed by a remote MCP server (MCP Apps widget, etc.). */
+export const remoteMcpResourceSchema = z.object({
+  uri: z.string().min(1),
+  name: z.string().nullable(),
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  mimeType: z.string().nullable(),
+  /** Resource _meta (e.g. iframe CSP for MCP Apps). */
+  meta: z.record(z.string(), z.unknown()).nullable().optional()
+});
+
+export type RemoteMcpResource = z.infer<typeof remoteMcpResourceSchema>;
 
 export const remoteMcpServerSchema = z.object({
   id: z.string().min(1),
@@ -304,10 +319,25 @@ export const remoteMcpServerSchema = z.object({
   toolCount: z.number().int().nonnegative(),
   readOnlyToolCount: z.number().int().nonnegative(),
   writeToolCount: z.number().int().nonnegative(),
-  tools: z.array(remoteMcpToolSchema).max(32)
+  tools: z.array(remoteMcpToolSchema).max(32),
+  /** UI/template resources the server exposes (for MCP Apps passthrough). */
+  resources: z.array(remoteMcpResourceSchema).max(32).optional()
 });
 
 export type RemoteMcpServer = z.infer<typeof remoteMcpServerSchema>;
+
+/** Contents returned by reading a remote resource (forwarded by the gateway). */
+export const remoteMcpResourceContentsSchema = z.object({
+  contents: z.array(z.object({
+    uri: z.string(),
+    mimeType: z.string().nullable().optional(),
+    text: z.string().nullable().optional(),
+    blob: z.string().nullable().optional(),
+    meta: z.record(z.string(), z.unknown()).nullable().optional()
+  }))
+});
+
+export type RemoteMcpResourceContents = z.infer<typeof remoteMcpResourceContentsSchema>;
 
 export const remoteMcpToolInvokeInputSchema = z.object({
   arguments: z.record(z.string(), z.unknown()).default({}),

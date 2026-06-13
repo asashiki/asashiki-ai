@@ -416,6 +416,22 @@ export async function createCoreApiApp(options?: {
       }
     }
   );
+  // Read a remote server's UI/template resource (MCP Apps widget passthrough),
+  // for the gateway to relay back to agents. Internal route.
+  server.post(
+    "/api/remote-mcp/servers/:serverId/resources/read",
+    async (request, reply) => {
+      const params = z.object({ serverId: z.string().min(1) }).parse(request.params);
+      const body = z.object({ uri: z.string().min(1) }).safeParse(request.body ?? {});
+      if (!body.success) { reply.code(400); return { error: "uri required" }; }
+      try {
+        return await remoteMcpRegistry.readResource(params.serverId, body.data.uri);
+      } catch (e) {
+        reply.code(502);
+        return { error: e instanceof Error ? e.message : "remote resource read failed" };
+      }
+    }
+  );
   server.get("/api/time-log/recent", async (request, reply) => {
     const query = z
       .object({

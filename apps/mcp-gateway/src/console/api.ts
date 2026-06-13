@@ -389,6 +389,7 @@ export function registerConsoleApi(
     try {
       await client.deleteRemoteServer(id);
       store.pruneRemoteSkillsForServer(id);
+      store.pruneRemoteResourcesForServer(id);
       if (config.rediscoverRemote) await config.rediscoverRemote();
       store.audit({ action: "remote_server_delete", success: true, detail: id });
       return { ok: true, deleted: id };

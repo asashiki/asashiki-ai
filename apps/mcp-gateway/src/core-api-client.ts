@@ -193,7 +193,8 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
     async listRemoteMcpServers(): Promise<Array<{
       id: string; name: string; url: string; description: string; status: string; lastError: string | null; toolCount: number;
       authMode: string; needsAuth?: boolean; oauthAuthorized?: boolean;
-      tools: Array<{ name: string; title: string | null; description: string | null; readOnlyHint: boolean; inputSchema: Record<string, unknown> }>;
+      tools: Array<{ name: string; title: string | null; description: string | null; readOnlyHint: boolean; inputSchema: Record<string, unknown>; meta?: Record<string, unknown> | null }>;
+      resources?: Array<{ uri: string; name: string | null; title: string | null; description: string | null; mimeType: string | null; meta?: Record<string, unknown> | null }>;
     }>> {
       const res = await fetch(resolveUrl(baseUrl, "/api/remote-mcp/servers"));
       if (!res.ok) throw new Error("Failed to list remote MCP servers.");
@@ -262,7 +263,22 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       );
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
-      return body as { content?: unknown[]; structuredContent?: unknown; isError?: boolean };
+      return body as { content?: unknown[]; structuredContent?: unknown; isError?: boolean; meta?: unknown };
+    },
+
+    /** Read a remote server's UI resource (MCP Apps widget) via core-api passthrough. */
+    async readRemoteResource(serverId: string, uri: string): Promise<{ contents: Array<{ uri: string; mimeType?: string | null; text?: string | null; blob?: string | null; meta?: unknown }> }> {
+      const res = await fetch(
+        resolveUrl(baseUrl, `/api/remote-mcp/servers/${encodeURIComponent(serverId)}/resources/read`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uri })
+        }
+      );
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      return body as never;
     },
 
     async searchX(input: unknown) {
