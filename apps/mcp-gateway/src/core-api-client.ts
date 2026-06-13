@@ -214,11 +214,38 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
 
     async listRemoteMcpServers(): Promise<Array<{
       id: string; name: string; url: string; description: string; status: string; lastError: string | null; toolCount: number;
+      authMode: string; needsAuth?: boolean; oauthAuthorized?: boolean;
       tools: Array<{ name: string; title: string | null; description: string | null; readOnlyHint: boolean; inputSchema: Record<string, unknown> }>;
     }>> {
       const res = await fetch(resolveUrl(baseUrl, "/api/remote-mcp/servers"));
       if (!res.ok) throw new Error("Failed to list remote MCP servers.");
       return (await res.json()) as never;
+    },
+
+    /** Begin the remote server's OAuth flow; returns the browser authorize URL (or already-authorized). */
+    async startRemoteOauth(serverId: string, redirectUri: string): Promise<{ status: "redirect" | "authorized"; authorizeUrl?: string }> {
+      if (!adminToken) throw new Error("Admin token not configured.");
+      const res = await fetch(resolveUrl(baseUrl, `/api/remote-mcp/servers/${encodeURIComponent(serverId)}/oauth/start`), {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${adminToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectUri })
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      return body as never;
+    },
+
+    /** Complete the OAuth flow (state is looked up server-side; returns the serverId). */
+    async finishRemoteOauth(code: string, state: string): Promise<{ ok: true; serverId: string }> {
+      if (!adminToken) throw new Error("Admin token not configured.");
+      const res = await fetch(resolveUrl(baseUrl, "/api/remote-mcp/oauth/callback"), {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${adminToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ code, state })
+      });
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      return body as never;
     },
 
     async addRemoteServer(config: Record<string, unknown>) {

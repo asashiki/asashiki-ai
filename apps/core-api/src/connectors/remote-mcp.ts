@@ -1,5 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { auth, UnauthorizedError, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import type {
+  OAuthClientInformationMixed,
+  OAuthClientMetadata,
+  OAuthTokens
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 import {
   connectorSchema,
   remoteMcpServerSchema,
@@ -23,10 +30,107 @@ const remoteMcpServerConfigSchema = z.object({
   bearerTokenEnv: z.string().trim().min(1).optional(),
   bearerToken: z.string().trim().min(1).optional(),
   headers: z.record(z.string(), z.string()).optional(),
-  enabled: z.boolean().default(true)
+  enabled: z.boolean().default(true),
+  // OAuth（授权码 + PKCE；客户端要么预注册要么 DCR 动态注册）
+  oauthClientId: z.string().trim().min(1).optional(),
+  oauthClientSecret: z.string().trim().min(1).optional(),
+  oauthClientInfo: z.record(z.string(), z.unknown()).optional(),
+  oauthTokens: z.record(z.string(), z.unknown()).optional(),
+  oauthCodeVerifier: z.string().optional(),
+  oauthState: z.string().optional(),
+  oauthRedirectUri: z.string().optional()
 });
 
 type RemoteMcpServerConfig = z.infer<typeof remoteMcpServerConfigSchema>;
+
+/** Persist a partial OAuth-state patch for a DB-managed server; returns false for env-defined servers. */
+export type PersistRemoteOauth = (
+  serverId: string,
+  patch: {
+    clientInfoJson?: string | null;
+    tokensJson?: string | null;
+    codeVerifier?: string | null;
+    state?: string | null;
+    redirectUri?: string | null;
+  }
+) => boolean;
+
+/** Thrown in non-interactive contexts when the remote server demands a (re)authorize. */
+export class RemoteAuthRequiredError extends Error {
+  constructor(serverId: string) {
+    super(`Remote MCP server "${serverId}" requires OAuth authorization.`);
+    this.name = "RemoteAuthRequiredError";
+  }
+}
+
+function hasOauthConfig(config: RemoteMcpServerConfig): boolean {
+  return Boolean(config.oauthClientId || config.oauthClientInfo || config.oauthTokens);
+}
+
+/**
+ * OAuthClientProvider backed by the remote_servers row. Two modes:
+ * - operation (default): tokens attach + auto-refresh; a demanded re-authorize
+ *   throws RemoteAuthRequiredError (server-side code can't redirect a browser).
+ * - interactive (start/finish flow): captures the authorize URL via onRedirect.
+ */
+function makeOauthProvider(
+  config: RemoteMcpServerConfig,
+  persist: PersistRemoteOauth,
+  interactive?: { state: string; redirectUri: string; onRedirect: (url: URL) => void }
+): OAuthClientProvider {
+  // Local mirrors so save→load roundtrips inside one auth() run see fresh values.
+  let tokens = config.oauthTokens as OAuthTokens | undefined;
+  let clientInfo: OAuthClientInformationMixed | undefined = config.oauthClientId
+    ? { client_id: config.oauthClientId, ...(config.oauthClientSecret ? { client_secret: config.oauthClientSecret } : {}) }
+    : (config.oauthClientInfo as OAuthClientInformationMixed | undefined);
+  let verifier = config.oauthCodeVerifier;
+  const redirectUri = interactive?.redirectUri ?? config.oauthRedirectUri;
+
+  return {
+    get redirectUrl() { return redirectUri; },
+    get clientMetadata(): OAuthClientMetadata {
+      return {
+        client_name: "Asashiki MCP Gateway",
+        redirect_uris: redirectUri ? [redirectUri] : [],
+        grant_types: ["authorization_code", "refresh_token"],
+        response_types: ["code"],
+        token_endpoint_auth_method: config.oauthClientSecret ? "client_secret_post" : "none"
+      };
+    },
+    state: () => interactive?.state ?? config.oauthState ?? randomUUID(),
+    clientInformation: () => clientInfo,
+    saveClientInformation: (info) => {
+      clientInfo = info;
+      // Pre-registered clients are kept as-is; DCR results are persisted.
+      if (!config.oauthClientId) persist(config.id, { clientInfoJson: JSON.stringify(info) });
+    },
+    tokens: () => tokens,
+    saveTokens: (t) => {
+      tokens = t;
+      persist(config.id, { tokensJson: JSON.stringify(t) });
+    },
+    redirectToAuthorization: (url) => {
+      if (interactive) { interactive.onRedirect(url); return; }
+      throw new RemoteAuthRequiredError(config.id);
+    },
+    saveCodeVerifier: (v) => {
+      verifier = v;
+      persist(config.id, { codeVerifier: v });
+    },
+    codeVerifier: () => {
+      if (!verifier) throw new Error(`No pending PKCE verifier for server "${config.id}".`);
+      return verifier;
+    },
+    invalidateCredentials: (scope) => {
+      if (scope === "all" || scope === "tokens") { tokens = undefined; persist(config.id, { tokensJson: null }); }
+      if ((scope === "all" || scope === "client") && !config.oauthClientId) {
+        clientInfo = undefined;
+        persist(config.id, { clientInfoJson: null });
+      }
+      if (scope === "all" || scope === "verifier") { verifier = undefined; persist(config.id, { codeVerifier: null }); }
+    }
+  };
+}
 
 type RemoteMcpServerSnapshot = {
   summary: RemoteMcpServer;
@@ -102,7 +206,8 @@ function buildRequestHeaders(
 async function withRemoteClient<T>(
   config: RemoteMcpServerConfig,
   envSource: NodeJS.ProcessEnv,
-  callback: (client: Client) => Promise<T>
+  callback: (client: Client) => Promise<T>,
+  authProvider?: OAuthClientProvider
 ) {
   const client = new Client({
     name: "asashiki-core-api-remote-mcp",
@@ -112,7 +217,11 @@ async function withRemoteClient<T>(
   const transport = new StreamableHTTPClientTransport(new URL(config.url), {
     requestInit: {
       headers: buildRequestHeaders(config, envSource)
-    }
+    },
+    // With a provider the SDK attaches the access token and auto-refreshes on
+    // 401; a demanded interactive re-authorize surfaces as our
+    // RemoteAuthRequiredError (thrown from redirectToAuthorization).
+    ...(authProvider ? { authProvider } : {})
   });
 
   try {
@@ -137,12 +246,31 @@ export function createRemoteMcpRegistry(options: {
   getServers?: () => RemoteMcpServerConfig[];
   envSource: NodeJS.ProcessEnv;
   cacheTtlMs?: number;
+  /** OAuth state persistence (DB-managed servers). Absent → OAuth disabled. */
+  persistOauth?: PersistRemoteOauth;
 }) {
   const cacheTtlMs = options.cacheTtlMs ?? 2 * 60 * 1000;
   const cache = new Map<string, RemoteMcpServerSnapshot>();
   // Resolve the current server list dynamically (env + console-managed DB rows).
   const currentServers = (): RemoteMcpServerConfig[] =>
     options.getServers ? options.getServers() : (options.servers ?? []);
+
+  const persist: PersistRemoteOauth = options.persistOauth ?? (() => false);
+  // Operation-mode provider: only for servers with OAuth material (a provider
+  // on a plain server would kick off DCR on any stray 401).
+  const providerFor = (config: RemoteMcpServerConfig) =>
+    hasOauthConfig(config) ? makeOauthProvider(config, persist) : undefined;
+
+  const isAuthDemand = (error: unknown) =>
+    error instanceof RemoteAuthRequiredError ||
+    error instanceof UnauthorizedError ||
+    /\b401\b|unauthorized|invalid_token/i.test(error instanceof Error ? error.message : String(error));
+
+  const authModeOf = (config: RemoteMcpServerConfig) =>
+    hasOauthConfig(config) ? "oauth"
+      : config.bearerToken ? "bearer"
+      : config.bearerTokenEnv ? "bearer-env"
+      : "none";
 
   async function loadServerSummary(
     config: RemoteMcpServerConfig,
@@ -158,7 +286,7 @@ export function createRemoteMcpRegistry(options: {
 
     try {
       const listed = await withRemoteClient(config, options.envSource, async (client) =>
-        client.listTools()
+        client.listTools(), providerFor(config)
       );
 
       const tools = listed.tools.map((tool: Record<string, unknown>) =>
@@ -169,8 +297,10 @@ export function createRemoteMcpRegistry(options: {
         name: config.name,
         url: config.url,
         description: config.description,
-        authMode: config.bearerTokenEnv ? "bearer-env" : "none",
+        authMode: authModeOf(config),
         status: "online",
+        needsAuth: false,
+        oauthAuthorized: Boolean(config.oauthTokens),
         lastSeenAt: seenAt,
         lastSuccessAt: seenAt,
         lastError: null,
@@ -190,17 +320,21 @@ export function createRemoteMcpRegistry(options: {
       return summary;
     } catch (error) {
       const previous = current?.summary ?? null;
+      const needsAuth = isAuthDemand(error);
       const summary = remoteMcpServerSchema.parse({
         id: config.id,
         name: config.name,
         url: config.url,
         description: config.description,
-        authMode: config.bearerTokenEnv ? "bearer-env" : "none",
+        authMode: authModeOf(config),
         status: "offline",
+        needsAuth,
+        oauthAuthorized: Boolean(config.oauthTokens),
         lastSeenAt: seenAt,
         lastSuccessAt: previous?.lastSuccessAt ?? null,
-        lastError:
-          error instanceof Error
+        lastError: needsAuth
+          ? "服务器要求 OAuth 授权——在控制台点「去授权」完成登录。"
+          : error instanceof Error
             ? error.message
             : "Failed to connect to remote MCP server.",
         toolCount: previous?.toolCount ?? 0,
@@ -242,6 +376,52 @@ export function createRemoteMcpRegistry(options: {
     listServers,
     listTools,
 
+    /**
+     * Begin the OAuth authorize flow (discovery → DCR if no pre-registered
+     * client → PKCE authorize URL). Returns the URL to send the browser to,
+     * or `{ status: "authorized" }` when a stored refresh token still works.
+     */
+    async startOauth(serverId: string, redirectUri: string): Promise<{ authorizeUrl?: string; status: "redirect" | "authorized" }> {
+      const config = resolveServer(serverId);
+      const state = randomUUID();
+      // Persist pending state up-front; also proves this is a DB-managed row.
+      if (!persist(serverId, { state, redirectUri })) {
+        throw new Error("OAuth 仅支持控制台添加的服务器（env 配置的服务器无处存 token）。");
+      }
+      let authorizeUrl: URL | null = null;
+      const provider = makeOauthProvider(
+        { ...config, oauthState: state, oauthRedirectUri: redirectUri },
+        persist,
+        { state, redirectUri, onRedirect: (url) => { authorizeUrl = url; } }
+      );
+      const result = await auth(provider, { serverUrl: config.url });
+      if (result === "AUTHORIZED") {
+        persist(serverId, { state: null, codeVerifier: null });
+        cache.delete(serverId);
+        return { status: "authorized" };
+      }
+      if (!authorizeUrl) throw new Error("Authorization URL was not produced by the OAuth flow.");
+      return { status: "redirect", authorizeUrl: (authorizeUrl as URL).toString() };
+    },
+
+    /** Complete the authorize flow (code → tokens). Validates the CSRF state. */
+    async finishOauth(serverId: string, code: string, state: string): Promise<void> {
+      const config = resolveServer(serverId);
+      if (!config.oauthState || config.oauthState !== state) {
+        throw new Error("OAuth state mismatch — restart the authorization from the console.");
+      }
+      if (!config.oauthRedirectUri) throw new Error("No pending OAuth flow for this server.");
+      const provider = makeOauthProvider(config, persist, {
+        state,
+        redirectUri: config.oauthRedirectUri,
+        onRedirect: () => { throw new Error("Unexpected re-authorize during token exchange."); }
+      });
+      const result = await auth(provider, { serverUrl: config.url, authorizationCode: code });
+      if (result !== "AUTHORIZED") throw new Error("OAuth token exchange did not complete.");
+      persist(serverId, { state: null, codeVerifier: null });
+      cache.delete(serverId);
+    },
+
     async invokeTool(
       serverId: string,
       toolName: string,
@@ -272,7 +452,8 @@ export function createRemoteMcpRegistry(options: {
             client.callTool({
               name: toolName,
               arguments: payload.arguments
-            })
+            }),
+          providerFor(config)
         );
 
         const contentText =
@@ -337,7 +518,7 @@ export function createRemoteMcpRegistry(options: {
         throw new Error(`Tool ${toolName} is not marked read-only. Set allowWrite=true to run it.`);
       }
       const result = await withRemoteClient(config, options.envSource, async (client) =>
-        client.callTool({ name: toolName, arguments: payload.arguments })
+        client.callTool({ name: toolName, arguments: payload.arguments }), providerFor(config)
       );
       return {
         content: "content" in result && Array.isArray(result.content) ? result.content : [],

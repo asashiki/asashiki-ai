@@ -13,6 +13,7 @@ FROM base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json ./
 COPY apps/admin-web/package.json apps/admin-web/package.json
+COPY apps/console-web/package.json apps/console-web/package.json
 COPY apps/core-api/package.json apps/core-api/package.json
 COPY apps/mcp-gateway/package.json apps/mcp-gateway/package.json
 COPY apps/public-web/package.json apps/public-web/package.json

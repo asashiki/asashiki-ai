@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Asashiki MCP · Console — Preview v4 樱羽</title>
+<!-- 樱羽 tokens（与项目 src/styles/tokens.css 内容一致） -->
+<style id="tokens-css">
+:root,[data-theme="light"]{--bg:#ffffff;--bg-tint:#fff2f9;--bg-tint-2:#e1e1fe;--surface:#ffffff;--surface-raised:#fffafd;--border:#f3dce9;--border-strong:#e9c4d9;--text:#3a3340;--text-2:#8a7d8f;--text-3:#b8aabb;--accent:#e96ba8;--accent-soft:#fdd9ec;--accent-2:#8b8bef;--accent-2-soft:#e1e1fe;--on-accent:#ffffff;--ok:#4fb38a;--ok-soft:#d8f0e6;--warn:#f0a500;--warn-soft:#fdeac4;--err:#d04848;--err-soft:#f7d5d5;--shadow:0 1px 2px rgba(180,120,160,.06),0 4px 16px rgba(180,120,160,.08);--shadow-pop:0 8px 24px rgba(180,120,160,.14)}
+[data-theme="dark"]{--bg:#17141d;--bg-tint:#221b26;--bg-tint-2:#1e1d2e;--surface:#1e1a24;--surface-raised:#262130;--border:#332a3a;--border-strong:#46394f;--text:#f0e9f2;--text-2:#a796ad;--text-3:#6f6178;--accent:#f288c0;--accent-soft:#3c2535;--accent-2:#a3a3f7;--accent-2-soft:#28284a;--on-accent:#241420;--ok:#5fc89d;--ok-soft:#1c3329;--warn:#f5b73d;--warn-soft:#3a2d10;--err:#e36868;--err-soft:#3a1f1f;--shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.35);--shadow-pop:0 12px 32px rgba(0,0,0,.45)}
+:root{--radius-s:7px;--radius-m:10px;--radius-l:14px;--font:"PingFang SC","Hiragino Sans","Yu Gothic UI","Noto Sans SC",-apple-system,"Segoe UI",sans-serif;--mono:"SF Mono","Cascadia Code",Consolas,monospace;--skew:-12deg;--stripe:repeating-linear-gradient(-55deg,var(--accent-soft) 0 3px,transparent 3px 9px);--ease:.2s ease}
+</style>
+<style id="app-css">
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;transition:background .35s,color .35s}a{color:inherit;text-decoration:none;cursor:pointer}code,.mono{font-family:var(--mono)}
+.topbar{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--border)}.topbar-inner{max-width:1280px;margin:0 auto;padding:12px 28px;display:flex;align-items:center;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}.brand-mark{width:22px;height:22px;border-radius:var(--radius-s);background:linear-gradient(135deg,var(--accent),var(--accent-2));transform:skewX(var(--skew))}.brand small{font-weight:400;color:var(--text-3);margin-left:4px;font-size:11px;letter-spacing:.08em}
+.nav-tabs{display:flex;gap:2px;margin-left:18px}.nav-tabs a{padding:7px 14px;color:var(--text-2);font-size:13.5px;font-weight:500;border-radius:var(--radius-m);cursor:pointer;transition:color var(--ease),background var(--ease)}.nav-tabs a:hover{color:var(--text);background:var(--bg-tint)}.nav-tabs a.active{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.spacer{flex:1}.top-util{display:flex;align-items:center;gap:12px}
+.health-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--ok-soft);color:var(--ok);border-radius:var(--radius-s);font-size:12px;font-weight:600}.health-pill.warn{background:var(--warn-soft);color:var(--warn)}.health-pill.err{background:var(--err-soft);color:var(--err)}.health-pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.user-mini{display:flex;align-items:center;gap:8px}.user-mini .ava{width:28px;height:28px;border-radius:var(--radius-s);background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}.user-mini .nm{font-size:13px;color:var(--text-2)}
+.icon-btn{background:transparent;border:1px solid var(--border);color:var(--text-2);width:32px;height:32px;border-radius:var(--radius-m);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all var(--ease)}.icon-btn:hover{background:var(--bg-tint);color:var(--text)}
+.mob-menu-btn{display:none}.mob-nav{display:none}
+.frame{max-width:1280px;margin:0 auto;padding:32px 28px 96px}
+.ph{display:flex;gap:24px;align-items:flex-end;justify-content:space-between;margin-bottom:28px}.ph .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--accent);text-transform:uppercase;margin-bottom:10px}.ph .eyebrow::before{content:"";width:18px;height:8px;background:var(--accent);border-radius:2px;transform:skewX(var(--skew));opacity:.9}.ph h1{font:700 28px/1.25 var(--font);letter-spacing:-.01em}.ph .lede{color:var(--text-2);margin-top:8px;max-width:640px;font-size:14.5px}.ph-meta{text-align:right;font-family:var(--mono);font-size:11.5px;color:var(--text-3);line-height:1.7}.ph-actions{display:flex;gap:8px;flex-shrink:0}
+.btn{font-family:var(--font);font-size:13px;font-weight:600;border-radius:var(--radius-m);padding:8px 16px;cursor:pointer;border:1px solid transparent;transition:all .18s;display:inline-flex;align-items:center;gap:6px;background:var(--surface);color:var(--text);border-color:var(--border)}.btn:hover{background:var(--bg-tint);border-color:var(--border-strong)}.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}.btn.primary:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:var(--shadow)}.btn.secondary{background:var(--accent-2-soft);color:var(--accent-2);border-color:transparent}.btn.ghost{background:transparent;color:var(--text-2);border-color:var(--border-strong)}.btn.ghost:hover{background:var(--bg-tint);color:var(--text)}.btn.danger{color:var(--err);border-color:var(--err-soft);background:var(--surface)}.btn.danger:hover{background:var(--err-soft)}.btn.sm{padding:5px 11px;font-size:12px}
+.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:12.5px;font-weight:600;color:var(--text-2)}.field input{width:100%;font-family:var(--font);font-size:14px;background:var(--bg-tint);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-m);padding:10px 13px;outline:none;transition:all .18s}.field input:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--accent-soft)}.field .help{font-size:11.5px;color:var(--text-3)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);box-shadow:var(--shadow);overflow:hidden}.card-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}.card-head h3{font:700 19px/1.4 var(--font);font-size:15px}.card-head .sub{font-size:11.5px;font-weight:600;letter-spacing:.12em;color:var(--text-3);text-transform:uppercase}.card-head .right{margin-left:auto;display:flex;gap:8px;align-items:center}.card-body{padding:18px}.card.deco{position:relative}.card.deco::before{content:"";position:absolute;top:0;right:0;width:80px;height:7px;background:var(--stripe);border-bottom-left-radius:var(--radius-s)}
+.tag{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:var(--radius-s);display:inline-flex;align-items:center;gap:4px}.tag.a{background:var(--accent-soft);color:var(--accent)}.tag.b{background:var(--accent-2-soft);color:var(--accent-2)}.tag.line{background:transparent;border:1px solid var(--border-strong);color:var(--text-2)}.tag.ok{background:var(--ok-soft);color:var(--ok)}.tag.warn{background:var(--warn-soft);color:var(--warn)}.tag.err{background:var(--err-soft);color:var(--err)}
+.sw{width:38px;height:22px;border-radius:11px;background:var(--border-strong);position:relative;cursor:pointer;border:none;padding:0;transition:background .2s;flex-shrink:0}.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.18)}.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(16px)}.sw.sm{width:32px;height:18px}.sw.sm::after{width:12px;height:12px;top:3px;left:3px}.sw.sm.on::after{transform:translateX(14px)}
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:18px 20px;position:relative;box-shadow:var(--shadow);overflow:hidden}.kpi.deco::before{content:"";position:absolute;top:0;right:0;width:70px;height:6px;background:var(--stripe)}.kpi .lab{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--text-3);text-transform:uppercase;margin-bottom:8px}.kpi .val{font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.02em;color:var(--text);line-height:1.1}.kpi .val .unit{font-family:var(--font);font-size:12px;font-weight:500;color:var(--text-2);margin-left:6px}.kpi .val .em{color:var(--accent)}.kpi .trend{margin-top:6px;font-size:12px;color:var(--text-2);display:flex;align-items:baseline;gap:6px}.kpi .trend .up{color:var(--ok);font-weight:600}.kpi .trend .down{color:var(--err);font-weight:600}.kpi .spark{margin-top:8px;width:100%;height:26px;display:block}
+.ov-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-bottom:16px}.traffic-chart{width:100%;height:200px;display:block}
+.seg{display:inline-flex;background:var(--bg-tint);border:1px solid var(--border);border-radius:var(--radius-m);padding:3px;gap:2px}.seg button{font-family:var(--font);font-size:12px;font-weight:600;border:none;background:transparent;color:var(--text-2);padding:4px 11px;border-radius:calc(var(--radius-m) - 4px);cursor:pointer;transition:all .2s}.seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.top-tools{list-style:none}.top-tools li{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;padding:9px 0;border-bottom:1px dashed var(--border)}.top-tools li:last-child{border-bottom:none}.top-tools .rk{font-family:var(--mono);font-size:11.5px;color:var(--text-3);letter-spacing:.04em}.top-tools .nm{display:flex;flex-direction:column;gap:1px;min-width:0}.top-tools .nm .t{font-size:13.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top-tools .nm .id{font-family:var(--mono);font-size:11px;color:var(--text-3)}.top-tools .ct{text-align:right;min-width:70px}.top-tools .ct .num{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--text)}.top-tools .ct .bar{margin-top:4px;height:5px;background:linear-gradient(90deg,var(--accent-2),var(--accent));clip-path:polygon(0 0,100% 0,calc(100% - 4px) 100%,0 100%);border-radius:2px}
+.agent-share{display:flex;flex-direction:column;gap:12px}.agent-share .row{display:grid;grid-template-columns:110px 1fr 72px;gap:12px;align-items:center}.agent-share .row .name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agent-share .row .name .dot{display:inline-block;width:8px;height:8px;margin-right:6px;vertical-align:middle;border-radius:2px}.agent-share .bar-wrap{height:10px;background:var(--bg-tint);border-radius:5px;overflow:hidden;position:relative}.agent-share .bar-wrap .bar{height:100%;clip-path:polygon(0 0,100% 0,calc(100% - 5px) 100%,0 100%);border-radius:5px 0 0 5px}.agent-share .val{text-align:right;font-family:var(--mono);font-size:11.5px;color:var(--text-2)}
+.anom-list{display:flex;flex-direction:column}.anom{display:grid;grid-template-columns:62px 1fr auto;gap:14px;padding:10px 0;border-bottom:1px dashed var(--border)}.anom:last-child{border-bottom:none}.anom .ts{font-family:var(--mono);font-size:11px;color:var(--text-3);line-height:1.4}.anom .body{font-size:13px;color:var(--text-2);line-height:1.5}.anom .body .what{color:var(--text);font-weight:600}.anom .body .note{font-family:var(--mono);font-size:11.5px;color:var(--text-3);margin-top:2px;display:block}
+.sys-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0}.sys-grid .item{padding:14px 16px;border-right:1px dashed var(--border);border-bottom:1px dashed var(--border)}.sys-grid .item:nth-child(3n){border-right:none}.sys-grid .item:nth-last-child(-n+3){border-bottom:none}.sys-grid .item .nm{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text);font-weight:600;margin-bottom:4px}.sys-grid .item .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}.sys-grid .item .dot.warn{background:var(--warn)}.sys-grid .item .dot.err{background:var(--err)}.sys-grid .item .meta{font-family:var(--mono);font-size:11.5px;color:var(--text-3)}
+.tools-bar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap}.tools-bar .search{flex:0 1 320px;font-family:var(--font);font-size:13px;background:var(--bg-tint);border:1px solid var(--border);border-radius:var(--radius-m);padding:8px 13px;color:var(--text);outline:none}.tools-bar .search:focus{border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px var(--accent-soft)}.tools-bar .filter-chips{display:flex;gap:4px}.chip{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-s);padding:5px 11px;font-size:12px;font-weight:600;color:var(--text-2);cursor:pointer;transition:all var(--ease)}.chip:hover{background:var(--bg-tint)}.chip.active{background:var(--accent-soft);color:var(--accent);border-color:transparent}.tools-bar .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.group{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);box-shadow:var(--shadow);margin-top:18px;overflow:visible}.group.un{border-style:dashed;box-shadow:none;background:var(--surface)}.group-head{display:flex;gap:12px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border);cursor:grab}.group.un .group-head{cursor:default}.group-head .handle{color:var(--text-3);user-select:none;font-size:16px;line-height:1}.group-head .nm{font:700 19px/1.4 var(--font);font-size:16px;letter-spacing:-.005em}.group-head .count{font-family:var(--mono);font-size:11.5px;color:var(--text-3);letter-spacing:.04em}.group-head .right{margin-left:auto;display:flex;gap:6px}
+.skill{display:grid;grid-template-columns:18px 240px 1fr 160px 140px 60px;gap:16px;padding:12px 18px;border-bottom:1px dashed var(--border);align-items:center;transition:background var(--ease)}.skill:last-child{border-bottom:none}.skill:hover{background:var(--bg-tint)}.skill .drag{color:var(--text-3);cursor:grab;user-select:none;font-size:13px}.skill .nm{display:flex;flex-direction:column;gap:1px;min-width:0}.skill .nm .t{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.skill .nm .id{font-family:var(--mono);font-size:11px;color:var(--text-3)}.skill .desc{font-size:13px;color:var(--text-2);line-height:1.5}.skill .tags{display:flex;gap:4px;flex-wrap:wrap}
+.vis-wrap{position:relative}.vis-btn{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-s);color:var(--text-2);padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer}.vis-btn:hover{background:var(--bg-tint);color:var(--text)}.vis-btn .dot{width:7px;height:7px;border-radius:50%;background:var(--ok)}.vis-btn .caret{color:var(--text-3);font-size:10px}.vis-btn.partial{background:var(--accent-soft);color:var(--accent);border-color:transparent}.vis-btn.partial .dot{background:var(--accent)}.vis-btn.partial .caret{color:var(--accent)}.vis-btn:disabled{opacity:.35;cursor:not-allowed;background:var(--surface);border-color:var(--border);color:var(--text-3)}.vis-btn:disabled .dot{background:var(--text-3)}
+.vis-dd{position:absolute;top:calc(100% + 6px);right:0;min-width:230px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-m);box-shadow:var(--shadow-pop);z-index:30;padding:6px;display:none}.vis-dd.open{display:block}.vis-dd .dh{padding:6px 8px;font-size:11px;color:var(--text-3);font-weight:700;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center}.vis-dd .dh .all{margin-left:auto;cursor:pointer;color:var(--accent);font-size:11px;font-weight:600;text-transform:none;letter-spacing:0}.vis-dd .vi{display:flex;align-items:center;gap:10px;padding:7px 10px;font-size:13px;color:var(--text);cursor:pointer;border-radius:var(--radius-s)}.vis-dd .vi:hover{background:var(--bg-tint)}.vis-dd .vi .ck{width:16px;height:16px;border-radius:var(--radius-s);border:1px solid var(--border-strong);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}.vis-dd .vi.on .ck{background:var(--accent);border-color:var(--accent)}.vis-dd .vi.on .ck::after{content:"";width:4px;height:8px;border-right:2px solid var(--on-accent);border-bottom:2px solid var(--on-accent);transform:rotate(45deg) translate(-1px,-1px)}.vis-dd .vi .ag-id{font-family:var(--mono);font-size:11px;color:var(--text-3);margin-left:auto}.vis-dd .df{padding:6px 10px 4px;border-top:1px dashed var(--border);margin-top:4px;font-size:11px;color:var(--text-3)}
+.agents-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.agent-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:18px 20px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;box-shadow:var(--shadow)}.agent-card.dim{opacity:.65}.agent-card .ava{width:44px;height:44px;border-radius:var(--radius-m);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:var(--on-accent);flex-shrink:0}.agent-card .info{min-width:0}.agent-card .info .row1{display:flex;gap:10px;align-items:baseline}.agent-card .info .nm{font:700 19px/1.4 var(--font);font-size:17px;letter-spacing:-.005em}.agent-card .info .id{font-family:var(--mono);font-size:11px;color:var(--text-3)}.agent-card .info .meta{margin-top:8px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-2)}.agent-card .info .meta .k{color:var(--text-3);font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;margin-right:4px}.agent-card .info .meta .v.tools{color:var(--accent);cursor:pointer;font-weight:600}.agent-card .actions{display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+.rcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-l);padding:18px 20px;margin-bottom:12px;display:grid;grid-template-columns:1fr auto;gap:16px;box-shadow:var(--shadow)}.rcard .rh{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.rcard .rh .nm{font:700 19px/1.4 var(--font);font-size:17px}.rcard .rh .id{font-family:var(--mono);font-size:11px;color:var(--text-3)}.rcard .url{font-family:var(--mono);font-size:11.5px;color:var(--text-2);word-break:break-all;margin:6px 0 8px}.rcard .meta{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--text-2)}.rcard .meta .k{font-family:var(--mono);font-size:10.5px;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase;margin-right:4px}.rcard .err{margin-top:10px;background:var(--err-soft);color:var(--err);border-radius:var(--radius-m);padding:10px 12px;font-family:var(--mono);font-size:11.5px;line-height:1.5}.rcard .ops{display:flex;flex-direction:column;gap:6px}
+.add-remote{margin-top:16px;border:1.5px dashed var(--border-strong);border-radius:var(--radius-l);padding:20px 22px;background:var(--surface-raised)}.add-remote h3{font:700 19px/1.4 var(--font);font-size:16px;margin-bottom:14px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}.field.full{grid-column:1/-1}.form-actions{margin-top:16px;display:flex;justify-content:flex-end;gap:8px}
+.audit-bar{display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap}.audit-bar .right{margin-left:auto}
+.day-block{margin-top:24px}.day-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}.day-head .date{font:700 19px/1.4 var(--font);font-size:17px}.day-head .wd{font-family:var(--mono);font-size:11px;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase}.day-head .stat{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--text-2)}
+.session{display:grid;grid-template-columns:84px 36px 1fr auto;gap:14px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-m);margin-bottom:8px}.session.bad{background:var(--err-soft);border-color:var(--err-soft)}.session .when{font-family:var(--mono);font-size:11.5px;color:var(--text-2)}.session .when .span{color:var(--text-3);font-size:10.5px}.session .badge{width:32px;height:32px;border-radius:var(--radius-s);color:var(--on-accent);font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}.session.bad .badge{background:var(--err);color:#fff}.session .body{min-width:0}.session .line1{font-size:13.5px;color:var(--text);line-height:1.45}.session .line1 .ag{font-weight:700;color:var(--accent)}.session .calls{margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}.session .calls .call{font-family:var(--mono);font-size:10.5px;color:var(--text-2);background:var(--bg-tint);border-radius:var(--radius-s);padding:2px 7px}.session .calls .call.bad{background:var(--surface);color:var(--err);border:1px solid var(--err-soft)}.session .right-meta{text-align:right;font-family:var(--mono);font-size:11px;color:var(--text-3);line-height:1.5}
+.login-page{min-height:100vh;display:grid;grid-template-columns:1.1fr 1fr;background:var(--bg)}.login-left{padding:56px 60px;border-right:1px solid var(--border);background:radial-gradient(circle at 20% 0%,var(--accent-soft) 0%,transparent 45%),radial-gradient(circle at 100% 100%,var(--accent-2-soft) 0%,transparent 50%),var(--bg);display:flex;flex-direction:column;justify-content:space-between}.login-left .brand-big{font-size:26px;font-weight:700;display:flex;align-items:center;gap:12px}.login-left .brand-big .mark{width:32px;height:32px;border-radius:var(--radius-m);background:linear-gradient(135deg,var(--accent),var(--accent-2));transform:skewX(var(--skew))}.login-left .hero{font-size:48px;font-weight:700;line-height:1.15;letter-spacing:-.01em;max-width:460px}.login-left .hero .hl{background:linear-gradient(transparent 62%,var(--accent-soft) 62%);border-radius:2px;padding:0 4px}.login-left .sub{margin-top:16px;font-size:15px;color:var(--text-2);max-width:440px;line-height:1.6}.login-left .colo{display:flex;gap:28px;padding-top:18px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11.5px;color:var(--text-3)}.login-left .colo .k{display:block;color:var(--text);font-weight:600;font-family:var(--font);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:2px}
+.login-right{padding:60px;display:flex;flex-direction:column;justify-content:center}.login-form{max-width:360px;width:100%}.login-form .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--accent);text-transform:uppercase;margin-bottom:10px}.login-form .eyebrow::before{content:"";width:18px;height:8px;background:var(--accent);border-radius:2px;transform:skewX(var(--skew))}.login-form h2{font:700 28px/1.25 var(--font);font-size:28px;letter-spacing:-.01em;margin-bottom:6px}.login-form p{color:var(--text-2);font-size:13.5px;margin-bottom:24px}.login-form .field + .field{margin-top:14px}.login-form .btn.primary{width:100%;padding:12px;justify-content:center;margin-top:18px;font-size:14px}.login-form .note{margin-top:14px;font-family:var(--mono);font-size:11px;color:var(--text-3)}
+.hidden{display:none!important}
+.ps{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);border-radius:var(--radius-m);padding:8px;display:flex;gap:4px;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;z-index:200;box-shadow:var(--shadow-pop)}.ps .badge{background:var(--accent);color:var(--on-accent);padding:4px 8px;border-radius:var(--radius-s)}.ps button{background:transparent;color:var(--bg);border:1px solid rgba(255,255,255,.3);padding:4px 10px;border-radius:var(--radius-s);font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}.ps button.active{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+@media (max-width:760px){.topbar-inner{padding:10px 16px;gap:10px}.nav-tabs{display:none}.top-util .health-pill{display:none}.top-util .user-mini .nm{display:none}.mob-menu-btn{display:inline-flex;background:transparent;border:1px solid var(--border);width:34px;height:34px;border-radius:var(--radius-m);align-items:center;justify-content:center;color:var(--text);cursor:pointer}.mob-nav{display:block;background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;max-height:0;overflow:hidden;transition:max-height .3s,padding .3s}.mob-nav.open{max-height:400px;padding:12px 16px}.mob-nav a{display:block;padding:10px 12px;border-radius:var(--radius-m);color:var(--text);font-size:14.5px;font-weight:600}.mob-nav a.active{background:var(--accent-soft);color:var(--accent)}
+.frame{padding:20px 16px 60px}.ph{flex-direction:column;align-items:stretch;gap:14px}.ph h1{font-size:24px}.ph-meta{text-align:left}.kpi-grid{grid-template-columns:1fr 1fr;gap:10px}.kpi .val{font-size:24px}.ov-grid{grid-template-columns:1fr;gap:14px}.sys-grid{grid-template-columns:1fr 1fr}.sys-grid .item:nth-child(3n){border-right:1px dashed var(--border)}.sys-grid .item:nth-child(2n){border-right:none}.sys-grid .item:nth-last-child(-n+2){border-bottom:none}.agents-grid{grid-template-columns:1fr}.agent-card{grid-template-columns:auto 1fr;grid-template-rows:auto auto}.agent-card .actions{grid-column:1/-1;flex-direction:row;justify-content:flex-start;gap:8px}
+.skill{grid-template-columns:18px 1fr auto;grid-template-areas:"drag nm sw" ".    desc desc" ".    tags vis";row-gap:8px;column-gap:12px;padding:14px 16px}.skill .drag{grid-area:drag}.skill .nm{grid-area:nm}.skill .desc{grid-area:desc;font-size:12.5px}.skill .tags{grid-area:tags}.skill .vis-wrap{grid-area:vis;justify-self:end}.skill .sw-cell{grid-area:sw}
+.form-grid{grid-template-columns:1fr}.login-page{grid-template-columns:1fr}.login-left{padding:32px 24px;border-right:none;border-bottom:1px solid var(--border)}.login-left .hero{font-size:32px}.login-left .colo{gap:18px}.login-right{padding:32px 24px}.rcard{grid-template-columns:1fr}.rcard .ops{flex-direction:row}.session{grid-template-columns:36px 1fr;grid-template-rows:auto auto;grid-template-areas:"badge body" "when right";row-gap:6px}.session .badge{grid-area:badge}.session .body{grid-area:body}.session .when{grid-area:when;font-size:10.5px}.session .right-meta{grid-area:right;text-align:right}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="screen-login" class="screen hidden">
+  <div class="login-page">
+    <aside class="login-left">
+      <div class="brand-big">Asashiki<span style="color:var(--accent)">.</span></div>
+      <div>
+        <h1 class="hero">为你的 AI 助理，<br/>建一处 <span class="hl">安静的工坊</span>。</h1>
+        <p class="sub">把工具、密钥与权限整理成一处中枢，供任意 AI 安全调用。<br/>浅仪式 · 浅色为主，印象色只在该出现的地方出现。</p>
+      </div>
+      <div class="colo">
+        <div><span class="k">EDITION</span>2026.6</div>
+        <div><span class="k">ENDPOINT</span>mcp.asashiki.com</div>
+        <div><span class="k">GATEWAY</span>ONLINE</div>
+      </div>
+    </aside>
+    <section class="login-right">
+      <form class="login-form" onsubmit="event.preventDefault()">
+        <div class="eyebrow">SIGN IN</div>
+        <h2>进入控制台</h2>
+        <p>用你的管理员凭据登录。会话有效期 7 天。</p>
+        <div class="field"><label>用户名</label><input value="asashiki" /></div>
+        <div class="field"><label>口令</label><input type="password" placeholder="••••••••••••" /></div>
+        <button class="btn primary">登 录</button>
+        <div class="note">令牌仅保存在浏览器本地，登出即清除。</div>
+      </form>
+    </section>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div id="screen-app" class="screen">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">Asashiki<span style="color:var(--accent)">.</span><small>MCP CONSOLE</small></div>
+      <nav class="nav-tabs">
+        <a class="nv active" data-view="overview">概览</a>
+        <a class="nv" data-view="skills">技能</a>
+        <a class="nv" data-view="agents">Agents</a>
+        <a class="nv" data-view="remote">远程接入</a>
+        <a class="nv" data-view="audit">审计</a>
+      </nav>
+      <div class="spacer"></div>
+      <div class="top-util">
+        <span class="health-pill"><span class="dot"></span>全部在线</span>
+        <button class="icon-btn" id="theme-btn" title="切换主题">◐</button>
+        <span class="user-mini"><span class="ava">A</span><span class="nm">asashiki</span></span>
+        <button class="icon-btn" title="登出">↩</button>
+        <button class="mob-menu-btn" id="mob-btn">☰</button>
+      </div>
+    </div>
+    <div class="mob-nav" id="mob-nav">
+      <a class="nv active" data-view="overview">概览</a>
+      <a class="nv" data-view="skills">技能</a>
+      <a class="nv" data-view="agents">Agents</a>
+      <a class="nv" data-view="remote">远程接入</a>
+      <a class="nv" data-view="audit">审计</a>
+    </div>
+  </header>
+
+  <main class="frame">
+
+  <!-- OVERVIEW -->
+  <div class="view" data-view="overview">
+    <div class="ph">
+      <div>
+        <div class="eyebrow">OVERVIEW · 概览</div>
+        <h1>今日中枢</h1>
+        <p class="lede">实时调用情况、工具使用热度、最近异常与系统健康一览。</p>
+      </div>
+      <div class="ph-meta">实时 · 每 30 秒自动刷新<br/>截止 16:42:30</div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="lab">24h 调用</div><div class="val">184<span class="unit">次</span></div><div class="trend"><span class="up">↑ 12%</span> 较昨日</div><svg class="spark" viewBox="0 0 200 26" preserveAspectRatio="none"><polyline fill="none" stroke="var(--accent)" stroke-width="1.4" points="0,18 14,16 28,20 42,14 56,12 70,16 84,10 98,8 112,12 126,6 140,9 154,4 168,7 182,2 196,5"/></svg></div>
+      <div class="kpi"><div class="lab">本周调用</div><div class="val">1,287<span class="unit">次</span></div><div class="trend"><span class="up">↑ 8%</span> 较上周</div><svg class="spark" viewBox="0 0 200 26" preserveAspectRatio="none"><polyline fill="none" stroke="var(--accent-2)" stroke-width="1.4" points="0,14 28,12 56,16 84,8 112,10 140,6 168,9 196,4"/></svg></div>
+      <div class="kpi"><div class="lab">P95 延迟</div><div class="val">142<span class="unit">ms</span></div><div class="trend"><span class="up">↓ 3ms</span> 较昨日</div><svg class="spark" viewBox="0 0 200 26" preserveAspectRatio="none"><polyline fill="none" stroke="var(--ok)" stroke-width="1.4" points="0,10 28,12 56,9 84,13 112,7 140,10 168,8 196,6"/></svg></div>
+      <div class="kpi deco"><div class="lab">错误 / 拦截</div><div class="val">9<span class="unit">次</span></div><div class="trend"><span class="down">↑ 2</span> 全部为未授权</div><svg class="spark" viewBox="0 0 200 26" preserveAspectRatio="none"><polyline fill="none" stroke="var(--err)" stroke-width="1.4" points="0,22 28,20 56,22 84,18 112,16 140,20 168,14 196,12"/></svg></div>
+    </div>
+
+    <div class="ov-grid">
+      <div class="card deco">
+        <div class="card-head"><h3>调用量</h3><span class="sub">over time</span>
+          <span class="right"><div class="seg"><button>1H</button><button class="on">24H</button><button>7D</button><button>30D</button></div></span></div>
+        <div class="card-body">
+          <svg class="traffic-chart" viewBox="0 0 700 200" preserveAspectRatio="none">
+            <defs><linearGradient id="g-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+            <g stroke="var(--border)" stroke-opacity=".6"><line x1="0" x2="700" y1="50" y2="50"/><line x1="0" x2="700" y1="100" y2="100"/><line x1="0" x2="700" y1="150" y2="150"/></g>
+            <path d="M0,150 L30,140 L60,145 L90,130 L120,120 L150,128 L180,110 L210,118 L240,80 L270,90 L300,75 L330,60 L360,70 L390,50 L420,65 L450,40 L480,55 L510,35 L540,45 L570,60 L600,30 L630,45 L660,35 L690,50 L700,45 L700,200 L0,200 Z" fill="url(#g-area)"/>
+            <path d="M0,150 L30,140 L60,145 L90,130 L120,120 L150,128 L180,110 L210,118 L240,80 L270,90 L300,75 L330,60 L360,70 L390,50 L420,65 L450,40 L480,55 L510,35 L540,45 L570,60 L600,30 L630,45 L660,35 L690,50" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+            <circle cx="450" cy="40" r="3.5" fill="var(--accent)"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h3>工具排行</h3><span class="sub">top 24h</span></div>
+        <div class="card-body">
+          <ol class="top-tools">
+            <li><span class="rk">01</span><span class="nm"><span class="t">Device Status</span><span class="id">device_status</span></span><span class="ct"><div class="num">62</div><div class="bar" style="width:100%"></div></span></li>
+            <li><span class="rk">02</span><span class="nm"><span class="t">Current Weather</span><span class="id">weather_current</span></span><span class="ct"><div class="num">38</div><div class="bar" style="width:62%"></div></span></li>
+            <li><span class="rk">03</span><span class="nm"><span class="t">Current Location</span><span class="id">location_current</span></span><span class="ct"><div class="num">27</div><div class="bar" style="width:44%"></div></span></li>
+            <li><span class="rk">04</span><span class="nm"><span class="t">X / Twitter Search</span><span class="id">x_search</span></span><span class="ct"><div class="num">19</div><div class="bar" style="width:31%"></div></span></li>
+            <li><span class="rk">05</span><span class="nm"><span class="t">Write Diary Entry</span><span class="id">diary_write</span></span><span class="ct"><div class="num">14</div><div class="bar" style="width:23%"></div></span></li>
+            <li><span class="rk">06</span><span class="nm"><span class="t">Health Summary</span><span class="id">health_summary</span></span><span class="ct"><div class="num">12</div><div class="bar" style="width:20%"></div></span></li>
+            <li><span class="rk">07</span><span class="nm"><span class="t">Voice Message</span><span class="id">voice_bubble</span></span><span class="ct"><div class="num">8</div><div class="bar" style="width:13%"></div></span></li>
+            <li><span class="rk">08</span><span class="nm"><span class="t">Connector Status</span><span class="id">connector_status</span></span><span class="ct"><div class="num">4</div><div class="bar" style="width:7%"></div></span></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+
+    <div class="ov-grid">
+      <div class="card">
+        <div class="card-head"><h3>Agent 占比</h3><span class="sub">who's using what</span></div>
+        <div class="card-body">
+          <div class="agent-share">
+            <div class="row"><div class="name"><span class="dot" style="background:var(--accent)"></span>Claude.ai</div><div class="bar-wrap"><div class="bar" style="width:68%;background:var(--accent)"></div></div><div class="val">125 · 68%</div></div>
+            <div class="row"><div class="name"><span class="dot" style="background:var(--accent-2)"></span>ChatGPT</div><div class="bar-wrap"><div class="bar" style="width:24%;background:var(--accent-2)"></div></div><div class="val">44 · 24%</div></div>
+            <div class="row"><div class="name"><span class="dot" style="background:var(--ok)"></span>Codex VPS1</div><div class="bar-wrap"><div class="bar" style="width:5%;background:var(--ok)"></div></div><div class="val">10 · 5%</div></div>
+            <div class="row"><div class="name"><span class="dot" style="background:var(--warn)"></span>Codex VPS2</div><div class="bar-wrap"><div class="bar" style="width:3%;background:var(--warn)"></div></div><div class="val">5 · 3%</div></div>
+            <div class="row"><div class="name"><span class="dot" style="background:var(--text-3)"></span>ChatGPT slot 0</div><div class="bar-wrap"><div class="bar" style="width:0%;background:var(--text-3)"></div></div><div class="val">0</div></div>
+            <div class="row"><div class="name"><span class="dot" style="background:var(--text-3)"></span>Manual Test</div><div class="bar-wrap"><div class="bar" style="width:0%;background:var(--text-3)"></div></div><div class="val">0</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card deco">
+        <div class="card-head"><h3>最近异常</h3><span class="sub">last 24h</span><span class="right"><a class="btn ghost sm" data-jump="audit">去审计 →</a></span></div>
+        <div class="card-body">
+          <div class="anom-list">
+            <div class="anom"><div class="ts">16:45:09</div><div class="body"><span class="what">未授权访问</span> · 缺少 Authorization 头<span class="note">来源 IP 192.168.1.x · 2 秒内 2 次</span></div><span class="tag err">401</span></div>
+            <div class="anom"><div class="ts">23:21:27<br/><span style="color:var(--text-3)">昨日</span></div><div class="body"><span class="what">远程发现耗时异常</span> · supabase 接口超过 5 秒<span class="note">project_ref 配置不正确</span></div><span class="tag warn">5421ms</span></div>
+            <div class="anom"><div class="ts">15:32:11<br/><span style="color:var(--text-3)">6·4</span></div><div class="body"><span class="what">连续未授权</span> · 同 IP 短时间 4 次未授权<span class="note">建议检查客户端 token 是否过期</span></div><span class="tag err">401×4</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card deco" style="margin-top:16px">
+      <div class="card-head"><h3>系统健康</h3><span class="sub">gateway · core · connectors</span></div>
+      <div class="sys-grid">
+        <div class="item"><div class="nm"><span class="dot"></span>mcp-gateway</div><div class="meta">:4200 · 正常 · 在运行 4d 12h</div></div>
+        <div class="item"><div class="nm"><span class="dot"></span>core-api</div><div class="meta">:4100 · 正常 · 11 条最近请求</div></div>
+        <div class="item"><div class="nm"><span class="dot"></span>设备上报</div><div class="meta">2 台 iOS 在线 · 最近 4 分钟</div></div>
+        <div class="item"><div class="nm"><span class="dot"></span>OpenViking</div><div class="meta">已连接 · 16:46 写入成功</div></div>
+        <div class="item"><div class="nm"><span class="dot warn"></span>okx 连接器</div><div class="meta">凭据已配置 · 工具禁用中</div></div>
+        <div class="item"><div class="nm"><span class="dot err"></span>supabase remote</div><div class="meta">离线 · project_ref 错误</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SKILLS -->
+  <div class="view hidden" data-view="skills">
+    <div class="ph">
+      <div>
+        <div class="eyebrow">SKILLS · 技能</div>
+        <h1>技能注册表</h1>
+        <p class="lede">把工具按你自己的场景组织成分组。默认对所有 agent 可见——展开下拉才能把某个 agent 排除掉。</p>
+      </div>
+      <div class="ph-meta">14 / 19 启用<br/>UPDATED 16:42</div>
+    </div>
+
+    <div class="tools-bar">
+      <input class="search" placeholder="搜索技能 / id / 描述…" />
+      <div class="filter-chips">
+        <button class="chip active">全部</button>
+        <button class="chip">已启用</button>
+        <button class="chip">未启用</button>
+        <button class="chip">可写</button>
+        <button class="chip">远程</button>
+      </div>
+      <div class="right"><button class="btn ghost" onclick="document.getElementById('modal-mgmt').classList.add('open')">管理分组</button></div>
+    </div>
+
+    <!-- group 1 -->
+    <section class="group">
+      <header class="group-head"><span class="handle">⋮⋮</span><span class="nm">日常感知</span><span class="count">4 项</span></header>
+      <div class="group-body">
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Device Status</div><div class="id">device_status</div></div>
+          <div class="desc">查看所有上报设备的最新状态：在线、电量、心跳、网络。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" onclick="vd(this)"><span class="dot"></span>全部可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+              <div class="df">未来登记的新 agent 默认包含。</div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Current Location</div><div class="id">location_current</div></div>
+          <div class="desc">最近一次 GPS 上报（经纬度 + 精度 + 时间）。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn partial" onclick="vd(this)"><span class="dot"></span>3 / 6 可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+              <div class="df">3 个 agent 看不见这个工具。</div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Current Weather</div><div class="id">weather_current</div></div>
+          <div class="desc">某地当前的天气、气温、风向、湿度。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" onclick="vd(this)"><span class="dot"></span>全部可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+              <div class="df">未来登记的新 agent 默认包含。</div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Health Summary</div><div class="id">health_summary</div></div>
+          <div class="desc">最近一日 / 一周的步数、心率、睡眠、活动能量。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn partial" onclick="vd(this)"><span class="dot"></span>2 / 6 可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+              <div class="df">4 个 agent 看不见这个工具。</div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- group 2 -->
+    <section class="group">
+      <header class="group-head"><span class="handle">⋮⋮</span><span class="nm">写作 · 记录</span><span class="count">2 项</span></header>
+      <div class="group-body">
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Write Diary Entry</div><div class="id">diary_write</div></div>
+          <div class="desc">写一段文本到 OpenViking 的日记池，自动打上日期与来源 agent。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag a">可写</span></div>
+          <div class="vis-wrap"><button class="vis-btn partial" onclick="vd(this)"><span class="dot"></span>1 / 6 可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+              <div class="df">5 个 agent 看不见这个工具。</div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Voice Message</div><div class="id">voice_bubble</div></div>
+          <div class="desc">在对话内嵌入安娜语音气泡（合成 + UI 资源），需 MCP Apps 客户端。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag a">可写</span><span class="tag b">UI</span></div>
+          <div class="vis-wrap"><button class="vis-btn partial" onclick="vd(this)"><span class="dot"></span>1 / 6 可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+              <div class="df">5 个 agent 看不见这个工具。</div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- group 3 -->
+    <section class="group">
+      <header class="group-head"><span class="handle">⋮⋮</span><span class="nm">资产查询</span><span class="count">3 项 · 全部未启用</span></header>
+      <div class="group-body">
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">OKX Trading Balance</div><div class="id">okx_balance</div></div>
+          <div class="desc">读取交易账户余额（现货 + 永续保证金）。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" disabled><span class="dot"></span>技能未启用</button></div>
+          <div class="sw-cell"><button class="sw" onclick="ts(this)"></button></div>
+        </div>
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">OKX Open Positions</div><div class="id">okx_positions</div></div>
+          <div class="desc">列出当前所有未平仓位、未实现盈亏与杠杆。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" disabled><span class="dot"></span>技能未启用</button></div>
+          <div class="sw-cell"><button class="sw" onclick="ts(this)"></button></div>
+        </div>
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">OKX Funding Assets</div><div class="id">okx_assets</div></div>
+          <div class="desc">资金账户余额（划转入金账户）。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" disabled><span class="dot"></span>技能未启用</button></div>
+          <div class="sw-cell"><button class="sw" onclick="ts(this)"></button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ungrouped -->
+    <section class="group un">
+      <header class="group-head"><span class="handle" style="opacity:.3">⋮⋮</span><span class="nm" style="font-style:italic;color:var(--text-2)">未归类</span><span class="count">8 项 · 新加入的技能默认落在这里</span></header>
+      <div class="group-body">
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Device Activity Timeline</div><div class="id">device_timeline</div></div>
+          <div class="desc">按时间轴呈现某台设备的事件：应用切换、屏幕开关、位置变化。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" onclick="vd(this)"><span class="dot"></span>全部可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">X / Twitter Search</div><div class="id">x_search</div></div>
+          <div class="desc">查询 X / Twitter 上的最近推文。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" onclick="vd(this)"><span class="dot"></span>全部可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+        <div class="skill">
+          <span class="drag">⋮⋮</span>
+          <div class="nm"><div class="t">Health Records</div><div class="id">health_records</div></div>
+          <div class="desc">原始健康记录（按日 / 按指标查询）。</div>
+          <div class="tags"><span class="tag line">本地</span><span class="tag line">只读</span></div>
+          <div class="vis-wrap"><button class="vis-btn" onclick="vd(this)"><span class="dot"></span>全部可见<span class="caret">▾</span></button>
+            <div class="vis-dd"><div class="dh">对哪些 AGENT 可见<span class="all">全选</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Claude.ai<span class="ag-id">claude-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT<span class="ag-id">chatgpt-ai</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>ChatGPT slot 0<span class="ag-id">chatgpt-ai-0</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS1<span class="ag-id">codex-vps-1</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Codex VPS2<span class="ag-id">codex-vps-2</span></div>
+              <div class="vi on" onclick="tv(this)"><span class="ck"></span>Manual Test<span class="ag-id">manual-test</span></div>
+            </div></div>
+          <div class="sw-cell"><button class="sw on" onclick="ts(this)"></button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- AGENTS -->
+  <div class="view hidden" data-view="agents">
+    <div class="ph">
+      <div>
+        <div class="eyebrow">AGENTS · 受權者</div>
+        <h1>登记的 AI 客户端</h1>
+        <p class="lede">每个 agent 拥有独立 OAuth 密钥。技能可见性请在 <a data-jump="skills" style="color:var(--accent);font-weight:600">技能</a> 页每行下拉里调整。</p>
+      </div>
+      <div class="ph-actions"><button class="btn primary">+ 登记 Agent</button></div>
+    </div>
+
+    <div class="agents-grid">
+      <article class="agent-card">
+        <div class="ava" style="background:var(--accent)">C</div>
+        <div class="info"><div class="row1"><span class="nm">Claude.ai</span><span class="id">claude-ai</span></div>
+          <div class="meta">
+            <span><span class="k">状态</span>启用</span>
+            <span><span class="k">最近</span>今天 16:46</span>
+            <span><span class="k">可见</span><span class="v tools">14 项工具</span></span>
+          </div></div>
+        <div class="actions"><button class="btn ghost sm">轮换密钥</button><button class="btn danger sm">禁用</button></div>
+      </article>
+      <article class="agent-card">
+        <div class="ava" style="background:var(--accent-2)">G</div>
+        <div class="info"><div class="row1"><span class="nm">ChatGPT</span><span class="id">chatgpt-ai</span></div>
+          <div class="meta">
+            <span><span class="k">状态</span>启用</span>
+            <span><span class="k">最近</span>6·4 23:20</span>
+            <span><span class="k">可见</span><span class="v tools">11 项工具</span></span>
+          </div></div>
+        <div class="actions"><button class="btn ghost sm">轮换密钥</button><button class="btn danger sm">禁用</button></div>
+      </article>
+      <article class="agent-card">
+        <div class="ava" style="background:linear-gradient(135deg,var(--accent),var(--accent-2))">G</div>
+        <div class="info"><div class="row1"><span class="nm">ChatGPT slot 0</span><span class="id">chatgpt-ai-0</span></div>
+          <div class="meta">
+            <span><span class="k">状态</span>启用</span>
+            <span><span class="k">最近</span>从未</span>
+            <span><span class="k">可见</span><span class="v tools">9 项工具</span></span>
+          </div></div>
+        <div class="actions"><button class="btn ghost sm">轮换密钥</button><button class="btn danger sm">禁用</button></div>
+      </article>
+      <article class="agent-card">
+        <div class="ava" style="background:var(--ok)">C</div>
+        <div class="info"><div class="row1"><span class="nm">Codex on VPS1</span><span class="id">codex-vps-1</span></div>
+          <div class="meta">
+            <span><span class="k">状态</span>启用</span>
+            <span><span class="k">最近</span>从未</span>
+            <span><span class="k">可见</span><span class="v tools">7 项工具</span></span>
+          </div></div>
+        <div class="actions"><button class="btn ghost sm">轮换密钥</button><button class="btn danger sm">禁用</button></div>
+      </article>
+      <article class="agent-card">
+        <div class="ava" style="background:var(--warn)">C</div>
+        <div class="info"><div class="row1"><span class="nm">Codex on VPS2</span><span class="id">codex-vps-2</span></div>
+          <div class="meta">
+            <span><span class="k">状态</span>启用</span>
+            <span><span class="k">最近</span>从未</span>
+            <span><span class="k">可见</span><span class="v tools">7 项工具</span></span>
+          </div></div>
+        <div class="actions"><button class="btn ghost sm">轮换密钥</button><button class="btn danger sm">禁用</button></div>
+      </article>
+      <article class="agent-card dim">
+        <div class="ava" style="background:var(--text-2)">M</div>
+        <div class="info"><div class="row1"><span class="nm">Manual Test</span><span class="id">manual-test</span></div>
+          <div class="meta">
+            <span><span class="k">状态</span>闲置</span>
+            <span><span class="k">最近</span>从未</span>
+            <span><span class="k">可见</span><span class="v tools">14 项工具</span></span>
+          </div></div>
+        <div class="actions"><button class="btn ghost sm">轮换密钥</button><button class="btn danger sm">删除</button></div>
+      </article>
+    </div>
+  </div>
+
+  <!-- REMOTE -->
+  <div class="view hidden" data-view="remote">
+    <div class="ph">
+      <div>
+        <div class="eyebrow">REMOTE · 遠端</div>
+        <h1>远程 MCP 接入</h1>
+        <p class="lede">把第三方 MCP 服务器并入本中枢。它们的工具会以 <code style="background:var(--bg-tint);padding:1px 5px;border-radius:var(--radius-s)">rmcp__&lt;server&gt;__&lt;tool&gt;</code> 出现在技能页。</p>
+      </div>
+      <div class="ph-actions"><button class="btn ghost">↻ 重新发现</button></div>
+    </div>
+
+    <article class="rcard">
+      <div>
+        <div class="rh"><span class="nm">Supabase Remote MCP</span><span class="id">supabase</span><span class="tag err">OFFLINE</span></div>
+        <div class="url">https://mcp.supabase.com/mcp?project_ref=...&amp;read_only=true</div>
+        <div class="meta"><span><span class="k">工具数</span>0</span><span><span class="k">最近发现</span>06·04 23:21</span><span><span class="k">连续失败</span>3 次</span></div>
+        <div class="err"><strong>错误：</strong>Streamable HTTP error · project_ref must be exactly 20 characters long.</div>
+      </div>
+      <div class="ops"><button class="btn ghost sm">重试</button><button class="btn danger sm">删除</button></div>
+    </article>
+
+    <section class="add-remote">
+      <h3>添加远程服务器</h3>
+      <div class="form-grid">
+        <div class="field"><label>ID（slug）</label><input placeholder="例：supabase" /></div>
+        <div class="field"><label>显示名</label><input placeholder="例：Supabase Remote MCP" /></div>
+        <div class="field full"><label>URL（streamable HTTP endpoint）</label><input placeholder="https://.../mcp" /></div>
+        <div class="field full"><label>描述（可选）</label><input placeholder="一句话说明" /></div>
+        <div class="field full"><label>Bearer Token（可选）</label><input type="password" placeholder="sk-..." /></div>
+      </div>
+      <div class="form-actions"><button class="btn primary">添加并发现</button></div>
+    </section>
+  </div>
+
+  <!-- AUDIT -->
+  <div class="view hidden" data-view="audit">
+    <div class="ph">
+      <div>
+        <div class="eyebrow">AUDIT · 起居註</div>
+        <h1>审计日志</h1>
+        <p class="lede">每一次客户端连接都被折叠成一个「会话」——里面包含一次 token 刷新和若干工具调用。异常会被高亮。</p>
+      </div>
+      <div class="ph-meta">最近 150 条<br/>UPDATED 16:42</div>
+    </div>
+
+    <div class="audit-bar">
+      <button class="chip active">全部会话</button>
+      <button class="chip">仅异常</button>
+      <button class="chip">登录事件</button>
+      <div class="seg" style="margin-left:6px"><button class="on">全部 Agent</button><button>claude-ai</button><button>chatgpt-ai</button></div>
+      <div class="right"><input class="search" style="width:220px" placeholder="搜索工具 / 详情…" /></div>
+    </div>
+
+    <section class="day-block">
+      <div class="day-head"><span class="date">今天</span><span class="wd">SAT</span><span class="stat">3 会话 · 10 调用 · 2 异常</span></div>
+
+      <div class="session">
+        <div class="when">16:46:08<br/><span class="span">→ 16:46:19 · 11s</span></div>
+        <div class="badge" style="background:var(--accent)">C</div>
+        <div class="body"><div class="line1"><span class="ag">Claude.ai</span> 连接，刷新 token 后调用了 1 个工具。</div><div class="calls"><span class="call">tools/list</span></div></div>
+        <div class="right-meta">1 调用<br/>P95 12ms</div>
+      </div>
+
+      <div class="session bad">
+        <div class="when">16:45:07<br/><span class="span">→ 16:45:09 · 2s</span></div>
+        <div class="badge">!</div>
+        <div class="body"><div class="line1">未知来源 2 次未授权访问被拦截。</div><div class="calls"><span class="call bad">missing-auth-header</span><span class="call bad">token-expired</span></div></div>
+        <div class="right-meta">2 失败</div>
+      </div>
+
+      <div class="session">
+        <div class="when">13:53:50<br/><span class="span">→ 13:54:01 · 11s</span></div>
+        <div class="badge" style="background:var(--accent)">C</div>
+        <div class="body"><div class="line1"><span class="ag">Claude.ai</span> 连接，进行了一系列设备与日记调用。</div>
+        <div class="calls"><span class="call">device_status</span><span class="call">device_timeline</span><span class="call">health_summary</span><span class="call">location_current</span><span class="call">diary_write</span></div></div>
+        <div class="right-meta">5 调用<br/>P95 142ms</div>
+      </div>
+    </section>
+
+    <section class="day-block">
+      <div class="day-head"><span class="date">昨天</span><span class="wd">FRI</span><span class="stat">2 会话 · 5 调用 · 0 异常</span></div>
+      <div class="session">
+        <div class="when">16:51:35<br/><span class="span">→ 16:51:41 · 6s</span></div>
+        <div class="badge" style="background:var(--accent)">C</div>
+        <div class="body"><div class="line1"><span class="ag">Claude.ai</span> 查询了杭州天气与当前位置。</div>
+        <div class="calls"><span class="call">weather_current</span><span class="call">location_current</span><span class="call">device_status</span></div></div>
+        <div class="right-meta">3 调用<br/>P95 312ms</div>
+      </div>
+    </section>
+  </div>
+
+  </main>
+</div>
+
+<!-- modal -->
+<div id="modal-mgmt" class="modal-wrap" style="position:fixed;inset:0;background:rgba(58,51,64,.45);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:100">
+  <div style="background:var(--surface);border-radius:var(--radius-l);box-shadow:var(--shadow-pop);width:560px;max-width:92vw;border:1px solid var(--border)">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:12px">
+      <h3 style="font:700 19px/1.4 var(--font);font-size:20px">管理分组</h3>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-3);letter-spacing:.1em;text-transform:uppercase">drag · rename · delete</span>
+      <button onclick="document.getElementById('modal-mgmt').style.display='none'" style="margin-left:auto;background:transparent;border:none;color:var(--text-3);cursor:pointer;font-size:18px">✕</button>
+    </div>
+    <div style="padding:16px 22px">
+      <div style="display:grid;grid-template-columns:18px 1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--border)">
+        <span style="color:var(--text-3);cursor:grab">⋮⋮</span>
+        <input value="日常感知" style="background:transparent;border:none;border-bottom:1px dashed transparent;font-family:var(--font);font-size:15px;font-weight:600;color:var(--text);padding:4px 0;outline:none" />
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">4 项</span>
+        <button style="background:transparent;border:1px solid transparent;color:var(--text-3);cursor:pointer;font-size:11.5px;font-weight:600;padding:4px 8px;border-radius:var(--radius-s)">删除</button>
+      </div>
+      <div style="display:grid;grid-template-columns:18px 1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--border)">
+        <span style="color:var(--text-3);cursor:grab">⋮⋮</span>
+        <input value="写作 · 记录" style="background:transparent;border:none;font-family:var(--font);font-size:15px;font-weight:600;color:var(--text);padding:4px 0;outline:none" />
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">2 项</span>
+        <button style="background:transparent;border:1px solid transparent;color:var(--text-3);cursor:pointer;font-size:11.5px;font-weight:600;padding:4px 8px;border-radius:var(--radius-s)">删除</button>
+      </div>
+      <div style="display:grid;grid-template-columns:18px 1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--border)">
+        <span style="color:var(--text-3);cursor:grab">⋮⋮</span>
+        <input value="资产查询" style="background:transparent;border:none;font-family:var(--font);font-size:15px;font-weight:600;color:var(--text);padding:4px 0;outline:none" />
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">3 项</span>
+        <button style="background:transparent;border:1px solid transparent;color:var(--text-3);cursor:pointer;font-size:11.5px;font-weight:600;padding:4px 8px;border-radius:var(--radius-s)">删除</button>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:10px">
+        <input placeholder="新分组名…" style="flex:1;font-family:var(--font);font-size:13.5px;background:var(--bg-tint);border:1px solid var(--border);border-radius:var(--radius-m);padding:8px 12px;outline:none;color:var(--text)" />
+        <button class="btn primary">添加</button>
+      </div>
+      <div style="margin-top:14px;padding:10px 12px;background:var(--accent-2-soft);color:var(--accent-2);border-radius:var(--radius-m);font-size:12.5px;line-height:1.55">
+        删除分组不会删除技能，里面的技能会回到「未归类」。把技能拖到不同的组里就能改变归类。
+      </div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn ghost" onclick="document.getElementById('modal-mgmt').style.display='none'">取消</button>
+      <button class="btn primary" onclick="document.getElementById('modal-mgmt').style.display='none'">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- preview switcher -->
+<div class="ps">
+  <span class="badge">v4 樱羽</span>
+  <button data-screen="login">登录</button>
+  <button data-screen="app" class="active">控制台</button>
+</div>
+
+<script>
+// 顶部 nav + mobile nav
+document.querySelectorAll('.nv').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  const v = a.dataset.view;
+  document.querySelectorAll('.nv').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll(`.nv[data-view="${v}"]`).forEach(x => x.classList.add('active'));
+  document.querySelectorAll('.view').forEach(x => x.classList.add('hidden'));
+  document.querySelector(`.view[data-view="${v}"]`).classList.remove('hidden');
+  document.getElementById('mob-nav').classList.remove('open');
+  window.scrollTo({top:0,behavior:'instant'});
+}));
+document.querySelectorAll('[data-jump]').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  document.querySelector(`.nv[data-view="${a.dataset.jump}"]`).click();
+}));
+
+// theme
+const root = document.documentElement;
+document.getElementById('theme-btn').addEventListener('click', () => {
+  const cur = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', cur === 'light' ? 'dark' : 'light');
+});
+
+// mobile menu
+document.getElementById('mob-btn').addEventListener('click', () => {
+  document.getElementById('mob-nav').classList.toggle('open');
+});
+
+// screen switcher
+document.querySelectorAll('.ps button[data-screen]').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.getElementById('screen-'+b.dataset.screen).classList.remove('hidden');
+  document.querySelectorAll('.ps button[data-screen]').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+}));
+
+// skill switch
+window.ts = el => { el.classList.toggle('on'); };
+
+// visibility dropdown
+window.vd = btn => {
+  const wrap = btn.closest('.vis-wrap');
+  document.querySelectorAll('.vis-dd.open').forEach(d => { if (d !== wrap.querySelector('.vis-dd')) d.classList.remove('open'); });
+  wrap.querySelector('.vis-dd').classList.toggle('open');
+};
+window.tv = el => {
+  el.classList.toggle('on');
+  const wrap = el.closest('.vis-wrap');
+  const total = wrap.querySelectorAll('.vi').length;
+  const on = wrap.querySelectorAll('.vi.on').length;
+  const btn = wrap.querySelector('.vis-btn');
+  const label = on === total ? '全部可见' : `${on} / ${total} 可见`;
+  for (const n of btn.childNodes) {
+    if (n.nodeType === 3 && n.textContent.trim()) { n.textContent = ' ' + label + ' '; break; }
+  }
+  if (on === total) btn.classList.remove('partial'); else btn.classList.add('partial');
+  const df = wrap.querySelector('.df');
+  if (df) df.textContent = on === total ? '未来登记的新 agent 默认包含。' : `${total - on} 个 agent 看不见这个工具。`;
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('.vis-wrap')) document.querySelectorAll('.vis-dd.open').forEach(d => d.classList.remove('open'));
+});
+
+// drag-drop demo for skill rows
+let dragId = null;
+document.querySelectorAll('.skill').forEach(row => {
+  row.setAttribute('draggable', 'true');
+  row.addEventListener('dragstart', e => { dragId = row; row.style.opacity = '.35'; });
+  row.addEventListener('dragend', e => { row.style.opacity = ''; dragId = null; document.querySelectorAll('.skill').forEach(r => r.style.background = ''); });
+  row.addEventListener('dragover', e => { if (dragId && dragId !== row) { e.preventDefault(); row.style.background = 'var(--accent-soft)'; } });
+  row.addEventListener('dragleave', e => { row.style.background = ''; });
+  row.addEventListener('drop', e => {
+    e.preventDefault();
+    if (dragId && dragId !== row) {
+      row.parentNode.insertBefore(dragId, row);
+      row.style.background = '';
+    }
+  });
+});
+
+// modal close clicking outside
+document.getElementById('modal-mgmt').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
+});
+</script>
+</body>
+</html>
+                 

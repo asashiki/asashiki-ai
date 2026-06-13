@@ -17,6 +17,8 @@ export interface ConsoleApiConfig {
   rediscoverRemote?: () => Promise<{ seeded: number }>;
   /** Gateway process start time (for /health uptime). */
   startedAt?: Date;
+  /** Public gateway origin (MCP_PUBLIC_URL) — base of the remote OAuth redirect URI. */
+  publicUrl?: string;
 }
 
 export function registerConsoleApi(
@@ -183,23 +185,73 @@ export function registerConsoleApi(
     }
   });
 
+  // 对齐 claude.ai 的连接器表单：Name + URL 必填；OAuth Client ID/Secret 可选
+  // （预注册客户端）；Bearer Token 可选（静态 token 服务器）。无 id 时由 name 生成。
   server.post("/api/console/remote", async (request, reply) => {
     if (!auth(request, reply)) return reply;
     const b = (request.body ?? {}) as Record<string, unknown>;
+    const name = String(b.name ?? "").trim();
+    const id = (String(b.id ?? "").trim() || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")).slice(0, 48);
     try {
       await client.addRemoteServer({
-        id: String(b.id ?? "").trim(),
-        name: String(b.name ?? "").trim(),
+        id,
+        name,
         url: String(b.url ?? "").trim(),
-        description: String(b.description ?? "").trim() || String(b.name ?? "").trim(),
+        description: String(b.description ?? "").trim() || undefined,
         bearerToken: b.bearerToken ? String(b.bearerToken) : undefined,
+        oauthClientId: b.clientId ? String(b.clientId).trim() : undefined,
+        oauthClientSecret: b.clientSecret ? String(b.clientSecret).trim() : undefined,
         enabled: true
       });
       const r = config.rediscoverRemote ? await config.rediscoverRemote() : { seeded: 0 };
-      store.audit({ action: "remote_server_add", success: true, detail: String(b.id ?? "") });
-      return { ok: true, id: b.id, discovered: r.seeded };
+      store.audit({ action: "remote_server_add", success: true, detail: id });
+      // 探活一次：401/OAuth 要求 → 前端立即引导去授权
+      let needsAuth = false;
+      try {
+        const servers = await client.listRemoteMcpServers();
+        const added = servers.find((s) => s.id === id);
+        needsAuth = Boolean(added?.needsAuth || (added?.authMode === "oauth" && !added?.oauthAuthorized));
+      } catch { /* best-effort */ }
+      return { ok: true, id, discovered: r.seeded, needsAuth };
     } catch (e) {
       reply.code(400); return { error: e instanceof Error ? e.message : "add failed" };
+    }
+  });
+
+  // ── 远程 MCP OAuth：发起授权（返回跳转 URL）+ 浏览器回调（公开路由） ──
+  const oauthCallbackPath = "/api/console/remote/oauth/callback";
+  server.post("/api/console/remote/:id/oauth/start", async (request, reply) => {
+    if (!auth(request, reply)) return reply;
+    const { id } = request.params as { id: string };
+    if (!config.publicUrl) { reply.code(400); return { error: "MCP_PUBLIC_URL not configured" }; }
+    const redirectUri = `${config.publicUrl.replace(/\/$/, "")}${oauthCallbackPath}`;
+    try {
+      const r = await client.startRemoteOauth(id, redirectUri);
+      store.audit({ action: "remote_oauth_start", success: true, detail: id });
+      return r;
+    } catch (e) {
+      reply.code(400); return { error: e instanceof Error ? e.message : "oauth start failed" };
+    }
+  });
+
+  // 外部授权服务器把浏览器重定向到这里。无控制台会话（跨站跳转），以 state 为凭据；
+  // state 由 core-api 与 serverId 绑定并一次性消费。完成后跳回控制台远程页。
+  server.get(oauthCallbackPath, async (request, reply) => {
+    const q = (request.query ?? {}) as { code?: string; state?: string; error?: string; error_description?: string };
+    const back = (params: string) => reply.redirect(`/console/remote?${params}`);
+    if (q.error) {
+      store.audit({ action: "remote_oauth_callback", success: false, detail: q.error });
+      return back(`oauth=err&msg=${encodeURIComponent(q.error_description || q.error)}`);
+    }
+    if (!q.code || !q.state) return back("oauth=err&msg=missing+code+or+state");
+    try {
+      const r = await client.finishRemoteOauth(q.code, q.state);
+      if (config.rediscoverRemote) await config.rediscoverRemote();
+      store.audit({ action: "remote_oauth_callback", success: true, detail: r.serverId });
+      return back(`oauth=ok&server=${encodeURIComponent(r.serverId)}`);
+    } catch (e) {
+      store.audit({ action: "remote_oauth_callback", success: false, detail: e instanceof Error ? e.message : "callback failed" });
+      return back(`oauth=err&msg=${encodeURIComponent(e instanceof Error ? e.message : "callback failed")}`);
     }
   });
 

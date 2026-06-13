@@ -184,6 +184,21 @@ export function migrateDatabase(database: DatabaseSync) {
     );
 
   `);
+
+  // OAuth client state for remote MCP servers (RFC 8414 discovery + optional
+  // RFC 7591 dynamic registration). Idempotent ALTERs for existing DBs.
+  const remoteOauthColumns = [
+    "oauth_client_id TEXT",        // pre-registered client (console input)
+    "oauth_client_secret TEXT",
+    "oauth_client_info_json TEXT", // DCR result (client_id/secret from server)
+    "oauth_tokens_json TEXT",      // access/refresh tokens
+    "oauth_code_verifier TEXT",    // pending PKCE verifier
+    "oauth_state TEXT",            // pending authorize state (CSRF)
+    "oauth_redirect_uri TEXT"      // redirect URI used for the pending flow
+  ];
+  for (const col of remoteOauthColumns) {
+    try { database.exec(`ALTER TABLE remote_servers ADD COLUMN ${col}`); } catch { /* exists */ }
+  }
 }
 
 function getCount(database: DatabaseSync, table: string) {

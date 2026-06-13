@@ -270,7 +270,8 @@ export const archiveDiaryEntrySchema = archiveDiaryEntryPreviewSchema.extend({
 
 export type ArchiveDiaryEntry = z.infer<typeof archiveDiaryEntrySchema>;
 
-export const remoteMcpAuthModeSchema = z.enum(["none", "bearer-env"]);
+// none: 开放直连；bearer/bearer-env: 静态 token；oauth: 授权码流程（DCR 或预注册客户端）
+export const remoteMcpAuthModeSchema = z.enum(["none", "bearer", "bearer-env", "oauth"]);
 
 export type RemoteMcpAuthMode = z.infer<typeof remoteMcpAuthModeSchema>;
 
@@ -293,6 +294,10 @@ export const remoteMcpServerSchema = z.object({
   description: z.string().min(1),
   authMode: remoteMcpAuthModeSchema,
   status: z.enum(["online", "degraded", "offline"]),
+  /** 服务器回了 401/需要 OAuth 授权（前端据此显示「去授权」按钮）。 */
+  needsAuth: z.boolean().optional(),
+  /** OAuth 服务器是否已持有 token。 */
+  oauthAuthorized: z.boolean().optional(),
   lastSeenAt: z.string().datetime(),
   lastSuccessAt: z.string().datetime().nullable(),
   lastError: z.string().nullable(),

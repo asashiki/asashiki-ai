@@ -162,7 +162,9 @@ export async function createCoreApiApp(options?: {
       const dbIds = new Set(dbServers.map((s) => s.id));
       return [...envRemoteServers.filter((s) => !dbIds.has(s.id)), ...dbServers];
     },
-    envSource: process.env
+    envSource: process.env,
+    // OAuth token/state persistence (returns false for env-defined servers → no row).
+    persistOauth: (serverId, patch) => repository.updateRemoteServerOauth(serverId, patch)
   });
   const supabaseTimeLog = createSupabaseTimeLogClient({
     url: env.SUPABASE_TIME_LOG_URL,
@@ -316,15 +318,50 @@ export async function createCoreApiApp(options?: {
       id: z.string().trim().min(1).regex(/^[a-z0-9-]+$/, "id: lowercase/digits/hyphen only"),
       name: z.string().trim().min(1),
       url: z.string().url(),
-      description: z.string().trim().min(1),
+      // 可选——对齐 claude.ai 的接入表单（Name + URL 必填，其余可选）
+      description: z.string().trim().min(1).optional(),
       bearerTokenEnv: z.string().trim().min(1).optional(),
       bearerToken: z.string().trim().min(1).optional(),
       headers: z.record(z.string(), z.string()).optional(),
-      enabled: z.boolean().optional()
+      enabled: z.boolean().optional(),
+      // OAuth 预注册客户端（不填则在需要时走 DCR 动态注册）
+      oauthClientId: z.string().trim().min(1).optional(),
+      oauthClientSecret: z.string().trim().min(1).optional()
     }).safeParse(request.body ?? {});
     if (!body.success) { reply.code(400); return { error: body.error.issues.map((i) => i.message).join("; ") }; }
-    repository.upsertRemoteServerConfig(body.data);
+    repository.upsertRemoteServerConfig({ ...body.data, description: body.data.description ?? body.data.name });
     return { ok: true, id: body.data.id };
+  });
+  // ── Remote MCP OAuth（授权码 + PKCE；gateway 中转浏览器跳转/回调） ──
+  server.post("/api/remote-mcp/servers/:serverId/oauth/start", async (request, reply) => {
+    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!(env.ADMIN_PANEL_TOKEN && bearer === env.ADMIN_PANEL_TOKEN)) {
+      reply.code(401); return { error: "Unauthorized" };
+    }
+    const { serverId } = z.object({ serverId: z.string().min(1) }).parse(request.params);
+    const body = z.object({ redirectUri: z.string().url() }).safeParse(request.body ?? {});
+    if (!body.success) { reply.code(400); return { error: "redirectUri (url) required" }; }
+    try {
+      return await remoteMcpRegistry.startOauth(serverId, body.data.redirectUri);
+    } catch (e) {
+      reply.code(400); return { error: e instanceof Error ? e.message : "oauth start failed" };
+    }
+  });
+  server.post("/api/remote-mcp/oauth/callback", async (request, reply) => {
+    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (!(env.ADMIN_PANEL_TOKEN && bearer === env.ADMIN_PANEL_TOKEN)) {
+      reply.code(401); return { error: "Unauthorized" };
+    }
+    const body = z.object({ code: z.string().min(1), state: z.string().min(1) }).safeParse(request.body ?? {});
+    if (!body.success) { reply.code(400); return { error: "code + state required" }; }
+    const serverId = repository.findRemoteServerIdByOauthState(body.data.state);
+    if (!serverId) { reply.code(400); return { error: "unknown or expired OAuth state" }; }
+    try {
+      await remoteMcpRegistry.finishOauth(serverId, body.data.code, body.data.state);
+      return { ok: true, serverId };
+    } catch (e) {
+      reply.code(400); return { error: e instanceof Error ? e.message : "oauth callback failed" };
+    }
   });
   server.delete("/api/remote-mcp/servers/:serverId", async (request, reply) => {
     const password = getBasicPassword(request.headers.authorization);

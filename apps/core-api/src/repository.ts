@@ -109,26 +109,71 @@ export function createRepository(database: DatabaseSync) {
         bearerTokenEnv: r.bearer_token_env ? String(r.bearer_token_env) : undefined,
         bearerToken: r.bearer_token ? String(r.bearer_token) : undefined,
         headers: r.headers_json ? (JSON.parse(String(r.headers_json)) as Record<string, string>) : undefined,
-        enabled: Number(r.enabled) === 1
+        enabled: Number(r.enabled) === 1,
+        oauthClientId: r.oauth_client_id ? String(r.oauth_client_id) : undefined,
+        oauthClientSecret: r.oauth_client_secret ? String(r.oauth_client_secret) : undefined,
+        oauthClientInfo: r.oauth_client_info_json
+          ? (JSON.parse(String(r.oauth_client_info_json)) as Record<string, unknown>)
+          : undefined,
+        oauthTokens: r.oauth_tokens_json
+          ? (JSON.parse(String(r.oauth_tokens_json)) as Record<string, unknown>)
+          : undefined,
+        oauthCodeVerifier: r.oauth_code_verifier ? String(r.oauth_code_verifier) : undefined,
+        oauthState: r.oauth_state ? String(r.oauth_state) : undefined,
+        oauthRedirectUri: r.oauth_redirect_uri ? String(r.oauth_redirect_uri) : undefined
       }));
     },
     upsertRemoteServerConfig(input: {
       id: string; name: string; url: string; description: string;
       bearerTokenEnv?: string; bearerToken?: string; headers?: Record<string, string>; enabled?: boolean;
+      oauthClientId?: string; oauthClientSecret?: string;
     }) {
       const now = new Date().toISOString();
       database.prepare(`
-        INSERT INTO remote_servers (id, name, url, description, bearer_token_env, bearer_token, headers_json, enabled, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO remote_servers (id, name, url, description, bearer_token_env, bearer_token, headers_json, enabled, oauth_client_id, oauth_client_secret, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET name=excluded.name, url=excluded.url, description=excluded.description,
           bearer_token_env=excluded.bearer_token_env, bearer_token=excluded.bearer_token, headers_json=excluded.headers_json,
-          enabled=excluded.enabled, updated_at=excluded.updated_at
+          enabled=excluded.enabled, oauth_client_id=excluded.oauth_client_id, oauth_client_secret=excluded.oauth_client_secret,
+          updated_at=excluded.updated_at
       `).run(
         input.id, input.name, input.url, input.description,
         input.bearerTokenEnv ?? null, input.bearerToken ?? null,
         input.headers ? JSON.stringify(input.headers) : null,
-        input.enabled === false ? 0 : 1, now, now
+        input.enabled === false ? 0 : 1,
+        input.oauthClientId ?? null, input.oauthClientSecret ?? null,
+        now, now
       );
+    },
+    /** Partial update of OAuth flow state; `null` clears a column, undefined leaves it. */
+    updateRemoteServerOauth(id: string, patch: {
+      clientInfoJson?: string | null; tokensJson?: string | null;
+      codeVerifier?: string | null; state?: string | null; redirectUri?: string | null;
+    }) {
+      const sets: string[] = [];
+      const vals: (string | null)[] = [];
+      const map: Array<[keyof typeof patch, string]> = [
+        ["clientInfoJson", "oauth_client_info_json"],
+        ["tokensJson", "oauth_tokens_json"],
+        ["codeVerifier", "oauth_code_verifier"],
+        ["state", "oauth_state"],
+        ["redirectUri", "oauth_redirect_uri"]
+      ];
+      for (const [key, col] of map) {
+        if (patch[key] !== undefined) { sets.push(`${col} = ?`); vals.push(patch[key] as string | null); }
+      }
+      if (sets.length === 0) return false;
+      sets.push("updated_at = ?");
+      vals.push(new Date().toISOString());
+      const res = database.prepare(`UPDATE remote_servers SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
+      return Number(res.changes) > 0;
+    },
+    /** Find the server with a pending OAuth flow matching this state (callback routing). */
+    findRemoteServerIdByOauthState(state: string): string | null {
+      const row = database.prepare(`SELECT id FROM remote_servers WHERE oauth_state = ?`).get(state) as
+        | { id: string }
+        | undefined;
+      return row ? row.id : null;
     },
     deleteRemoteServerConfig(id: string) {
       const res = database.prepare(`DELETE FROM remote_servers WHERE id = ?`).run(id);

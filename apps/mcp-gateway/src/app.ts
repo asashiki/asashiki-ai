@@ -224,7 +224,8 @@ export async function createMcpGatewayApp(options?: {
       corsOrigins: env.MCP_CONSOLE_CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
       sessionTtlSeconds: 7 * 24 * 3600,
       rediscoverRemote: discoverRemoteSkills,
-      startedAt
+      startedAt,
+      publicUrl: env.MCP_PUBLIC_URL
     });
 
     // Standalone console SPA at /console (built separately; see console-web).
