@@ -94,6 +94,16 @@ export function registerConsoleApi(
     return { skillId: id, enabled: b.enabled };
   });
 
+  // Persist drag order (sort_order). Body: { skillIds: [...] } in desired order.
+  server.post("/api/console/skills/reorder", async (request, reply) => {
+    if (!auth(request, reply)) return reply;
+    const b = (request.body ?? {}) as { skillIds?: unknown };
+    const ids = Array.isArray(b.skillIds) ? b.skillIds.filter((x): x is string => typeof x === "string") : null;
+    if (!ids) { reply.code(400); return { error: "skillIds (string[]) required" }; }
+    store.reorderSkills(ids);
+    return { ok: true, count: ids.length };
+  });
+
   server.post("/api/console/skills/:id/allow-write", async (request, reply) => {
     if (!auth(request, reply)) return reply;
     const { id } = request.params as { id: string };
@@ -129,6 +139,15 @@ export function registerConsoleApi(
     if (!secret) { reply.code(404); return { error: `unknown agent: ${id}` }; }
     store.audit({ agentId: id, action: "agent_regen", success: true });
     return { agentId: id, secret };
+  });
+
+  server.delete("/api/console/agents/:id", async (request, reply) => {
+    if (!auth(request, reply)) return reply;
+    const { id } = request.params as { id: string };
+    const ok = store.deleteAgent(id);
+    if (!ok) { reply.code(404); return { error: `unknown agent: ${id}` }; }
+    store.audit({ agentId: id, action: "agent_delete", success: true });
+    return { ok: true, deleted: id };
   });
 
   server.post("/api/console/agents/:id/enabled", async (request, reply) => {

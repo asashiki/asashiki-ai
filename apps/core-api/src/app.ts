@@ -39,7 +39,6 @@ import {
 import { createArchiveClient } from "./connectors/archive.js";
 import { createSupabaseTimeLogClient } from "./connectors/supabase-time-log.js";
 import { createDeviceAuth, parseDeviceTokens } from "./device-auth.js";
-import { createOkxConnector, parseOkxEnv } from "./connectors/okx.js";
 import { createSteamConnector, parseSteamEnv } from "./connectors/steam.js";
 import { createXSearchConnector, parseXSearchEnv } from "./connectors/x-search.js";
 import { createVikingConnector, parseVikingEnv, VikingError } from "./connectors/viking.js";
@@ -172,8 +171,6 @@ export async function createCoreApiApp(options?: {
     connectorName: env.SUPABASE_TIME_LOG_NAME
   });
   const deviceAuth = createDeviceAuth(parseDeviceTokens(env.DEVICE_TOKENS_JSON));
-  const okxConfig = parseOkxEnv(process.env);
-  const okx = okxConfig ? createOkxConnector(okxConfig) : null;
   const steamConfig = parseSteamEnv(process.env);
   const steam = steamConfig ? createSteamConnector(steamConfig) : null;
   const xSearchConfig = parseXSearchEnv(process.env);
@@ -633,25 +630,6 @@ export async function createCoreApiApp(options?: {
     return repository.getHealthRecords(input);
   });
 
-  // OKX read-only endpoints
-  server.get("/api/okx/balance", async (_request, reply) => {
-    if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
-    try { return await okx.getAccountBalance(); }
-    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
-  });
-
-  server.get("/api/okx/positions", async (_request, reply) => {
-    if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
-    try { return await okx.getPositions(); }
-    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
-  });
-
-  server.get("/api/okx/assets", async (_request, reply) => {
-    if (!okx) { reply.code(503); return { message: "OKX not configured." }; }
-    try { return await okx.getAssetBalances(); }
-    catch (e) { reply.code(502); return { message: e instanceof Error ? e.message : "OKX error." }; }
-  });
-
   // Location tracking endpoints
   server.post("/api/devices/location", async (request, reply) => {
     const identity = deviceAuth.resolve(request.headers.authorization);
@@ -767,49 +745,6 @@ export async function createCoreApiApp(options?: {
         durationMs: undefined
       });
       return { ok: true, id: row.id, audioBytes: audio.length, createdAt: row.createdAt };
-    } catch (e) {
-      reply.code(500);
-      return { error: e instanceof Error ? e.message : String(e) };
-    }
-  });
-
-  // Voice bubble: synthesize Anna voice and return a public audio URL for an
-  // in-chat playable bubble (claude.ai / ChatGPT via MCP Apps). Same MiniMax
-  // path as the device push, but the file is served publicly instead of queued.
-  server.post("/api/voice-bubble", async (request, reply) => {
-    const password = getBasicPassword(request.headers.authorization);
-    const bearer = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
-    const authed = (env.ADMIN_PANEL_TOKEN && password === env.ADMIN_PANEL_TOKEN) ||
-                   (env.ADMIN_PANEL_TOKEN && bearer === env.ADMIN_PANEL_TOKEN);
-    if (!authed) { reply.code(401); return { error: "Unauthorized" }; }
-    if (!minimaxConfig) { reply.code(503); return { error: "MiniMax not configured" }; }
-
-    let input;
-    try {
-      input = (await import("@asashiki/schemas")).voiceBubbleInputSchema.parse(request.body ?? {});
-    } catch (e) {
-      reply.code(400);
-      return { error: e instanceof Error ? e.message : "Invalid voice-bubble input." };
-    }
-
-    try {
-      const audio = await synthesizeVoice(minimaxConfig, input.text);
-      const filename = `${randomUUID()}.mp3`;
-      nodeFs.writeFileSync(nodePath.join(voiceDir, filename), audio);
-
-      const publicBase = (process.env.PUBLIC_BASE_URL ?? "").trim().replace(/\/$/, "");
-      const base = publicBase
-        ? `${publicBase}/voice`
-        : `${(request.headers["x-forwarded-proto"] as string) ?? "https"}://${(request.headers["x-forwarded-host"] as string) ?? request.headers.host ?? ""}/voice`;
-
-      return {
-        audioUrl: `${base}/${filename}`,
-        mimeType: "audio/mpeg",
-        text: input.text,
-        senderName: input.senderName ?? "Anna",
-        durationMs: null,
-        createdAt: new Date().toISOString()
-      };
     } catch (e) {
       reply.code(500);
       return { error: e instanceof Error ? e.message : String(e) };

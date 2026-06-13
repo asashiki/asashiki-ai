@@ -144,7 +144,7 @@ export async function createMcpGatewayApp(options?: {
       store.seedSkill({
         skillId: t.id,
         title: t.title,
-        category: meta?.category ?? "meta",
+        category: "local",
         source: "local",
         enabled: meta?.initialEnabled ?? true,
         description: t.description

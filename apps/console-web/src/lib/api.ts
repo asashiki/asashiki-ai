@@ -108,6 +108,8 @@ export const Skills = {
     request<{ skillId: string; allowWrite: boolean }>(
       "POST", `/api/console/skills/${encodeURIComponent(id)}/allow-write`, { allow },
     ),
+  reorder: (skillIds: string[]) =>
+    request<{ ok: true; count: number }>("POST", "/api/console/skills/reorder", { skillIds }),
 };
 
 // ---- Agents ----------------------------------------------------------------
@@ -126,6 +128,8 @@ export const Agents = {
     request<{ agentId: string; enabled: boolean }>(
       "POST", `/api/console/agents/${encodeURIComponent(id)}/enabled`, { enabled },
     ),
+  remove: (id: string) =>
+    request<{ ok: true; deleted: string }>("DELETE", `/api/console/agents/${encodeURIComponent(id)}`),
   getVisibility: (id: string) =>
     request<AgentVisibility>("GET", `/api/console/agents/${encodeURIComponent(id)}/visibility`),
   setVisibility: (id: string, skillIds: string[]) =>

@@ -764,6 +764,20 @@ code, .mono { font-family: var(--mono); }
   margin-bottom: 20px; flex-wrap: wrap;
 }
 .audit-bar .right { margin-left: auto; }
+.audit-bar .search {
+  font-family: var(--font); font-size: 13px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 8px 13px;
+  color: var(--text); outline: none;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.audit-bar .search::placeholder { color: var(--text-3); }
+.audit-bar .search:focus {
+  border-color: var(--accent); background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 
 .day-block { margin-top: 24px; }
 .day-head {

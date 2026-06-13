@@ -4,9 +4,6 @@ import {
   locationCurrentSchema,
   locationHistorySchema,
   locationHistoryQueryInputSchema,
-  okxAccountBalanceSchema,
-  okxAssetBalancesSchema,
-  okxPositionsSchema,
   weatherSchema,
   steamRecentGamesSchema,
   steamPlayerSummarySchema,
@@ -25,14 +22,11 @@ import {
   timeLogLookupResultSchema,
   timeLogRangeInputSchema,
   timeLogRangeSchema,
-  voiceBubbleInputSchema,
-  voiceBubbleResultSchema,
   xSearchInputSchema,
   xSearchOutputSchema,
 } from "@asashiki/schemas";
 import type { CoreApiClient } from "./core-api-client.js";
 import type { McpToolId } from "./mcp.js";
-import { VOICE_BUBBLE_URI, VOICE_BUBBLE_MIME, VOICE_AUDIO_ORIGINS, voiceBubbleHtml } from "./ui/voice-bubble-html.js";
 
 const shFmtHm = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -389,69 +383,6 @@ export function registerTools(server: McpServer, client: CoreApiClient, ctx: Too
     }
   );
 
-  // ───────────── okx ─────────────
-
-  ctx.maybeTool(
-    "okx_balance",
-    {
-      title: ctx.tool("okx_balance").title,
-      description: ctx.tool("okx_balance").description,
-      inputSchema: z.object({}),
-      outputSchema: okxAccountBalanceSchema,
-      annotations: { readOnlyHint: true, openWorldHint: true }
-    },
-    async () => {
-      const output = await client.getOkxBalance();
-      const top = output.holdings.slice(0, 3).map((h) => `${h.currency}=${(h.valueUsd ?? 0).toFixed(0)}U`).join(" ");
-      return {
-        content: [{ type: "text", text: `总权益: $${output.totalEquityUsd.toFixed(2)} | ${top}` }],
-        structuredContent: output
-      };
-    }
-  );
-
-  ctx.maybeTool(
-    "okx_positions",
-    {
-      title: ctx.tool("okx_positions").title,
-      description: ctx.tool("okx_positions").description,
-      inputSchema: z.object({}),
-      outputSchema: okxPositionsSchema,
-      annotations: { readOnlyHint: true, openWorldHint: true }
-    },
-    async () => {
-      const output = await client.getOkxPositions();
-      const summary = output.positions.length === 0
-        ? "当前无持仓。"
-        : output.positions.map((p) => `${p.instrument} ${p.side} PnL=${p.unrealizedPnl.toFixed(2)}U`).join("\n");
-      return {
-        content: [{ type: "text", text: summary }],
-        structuredContent: output
-      };
-    }
-  );
-
-  ctx.maybeTool(
-    "okx_assets",
-    {
-      title: ctx.tool("okx_assets").title,
-      description: ctx.tool("okx_assets").description,
-      inputSchema: z.object({}),
-      outputSchema: okxAssetBalancesSchema,
-      annotations: { readOnlyHint: true, openWorldHint: true }
-    },
-    async () => {
-      const output = await client.getOkxAssets();
-      const summary = output.assets.length === 0
-        ? "资金账户为空。"
-        : output.assets.map((a) => `${a.currency}: ${a.balance}`).join(", ");
-      return {
-        content: [{ type: "text", text: summary }],
-        structuredContent: output
-      };
-    }
-  );
-
   // ───────────── steam ─────────────
 
   ctx.maybeTool(
@@ -490,81 +421,6 @@ export function registerTools(server: McpServer, client: CoreApiClient, ctx: Too
       return {
         content: [{ type: "text", text: `${output.displayName} (${output.status})${playing}` }],
         structuredContent: output
-      };
-    }
-  );
-
-  // ───────────── voice (in-chat bubble via MCP Apps) ─────────────
-  // Note: the old voice_send (push TTS to the Android app) is intentionally
-  // no longer exposed to AI clients. Its core-api route + device polling stay
-  // intact for the app; only the MCP tool was removed. See README.
-
-  // UI resource: the voice bubble widget (rendered by claude.ai / ChatGPT).
-  // The sandboxed iframe gets a strict CSP by default; declare the audio origin
-  // so the <audio> element can load the mp3. Two CSP namespaces are emitted:
-  //   - `ui.csp.{resourceDomains,connectDomains}`     — MCP Apps standard (Claude)
-  //   - `openai/widgetCSP.{resource_domains,connect_domains}` — ChatGPT alias (snake_case)
-  // Claude reads the first; ChatGPT only reads the second.
-  const voiceCsp = {
-    ui: {
-      csp: {
-        resourceDomains: VOICE_AUDIO_ORIGINS,
-        connectDomains: VOICE_AUDIO_ORIGINS
-      }
-    },
-    "openai/widgetCSP": {
-      resource_domains: VOICE_AUDIO_ORIGINS,
-      connect_domains: VOICE_AUDIO_ORIGINS
-    }
-  };
-  if (ctx.isEnabled("voice_bubble")) server.registerResource(
-    "voice-bubble",
-    VOICE_BUBBLE_URI,
-    {
-      title: "Voice Bubble",
-      description: "Telegram-style playable voice message widget.",
-      mimeType: VOICE_BUBBLE_MIME,
-      _meta: voiceCsp
-    },
-    async () => ({
-      contents: [
-        {
-          uri: VOICE_BUBBLE_URI,
-          mimeType: VOICE_BUBBLE_MIME,
-          text: voiceBubbleHtml(),
-          _meta: voiceCsp
-        }
-      ]
-    })
-  );
-
-  ctx.maybeTool(
-    "voice_bubble",
-    {
-      title: ctx.tool("voice_bubble").title,
-      description: ctx.tool("voice_bubble").description,
-      inputSchema: voiceBubbleInputSchema,
-      outputSchema: voiceBubbleResultSchema,
-      annotations: {
-        readOnlyHint: false,
-        destructiveHint: false,
-        idempotentHint: false,
-        openWorldHint: true
-      },
-      // Link this tool to the UI resource for both MCP Apps (Claude) and ChatGPT.
-      _meta: {
-        ui: { resourceUri: VOICE_BUBBLE_URI },
-        "openai/outputTemplate": VOICE_BUBBLE_URI
-      }
-    },
-    async (input: z.infer<typeof voiceBubbleInputSchema>) => {
-      const output = await client.createVoiceBubble(input);
-      return {
-        content: [
-          { type: "text", text: `🎤 ${output.senderName}: ${output.text}` }
-        ],
-        structuredContent: output,
-        _meta: { ui: { resourceUri: VOICE_BUBBLE_URI } }
       };
     }
   );

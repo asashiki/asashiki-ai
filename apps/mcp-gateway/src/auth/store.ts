@@ -250,6 +250,16 @@ export class AuthStore {
     return true;
   }
 
+  /** Delete an agent and cascade: revoke tokens, drop its visibility allowlist. */
+  deleteAgent(agentId: string): boolean {
+    const res = this.db.prepare(`DELETE FROM agents WHERE agent_id = ?`).run(agentId);
+    if (Number(res.changes) === 0) return false;
+    this.db.prepare(`UPDATE oauth_access_tokens SET revoked = 1 WHERE agent_id = ?`).run(agentId);
+    this.db.prepare(`UPDATE oauth_refresh_tokens SET revoked = 1 WHERE agent_id = ?`).run(agentId);
+    this.db.prepare(`DELETE FROM skill_visibility WHERE agent_id = ?`).run(agentId);
+    return true;
+  }
+
   /** Verify an agent is enabled and the supplied secret matches. */
   verifyAgentSecret(agentId: string, secret: string): boolean {
     const row = this.db.prepare(`SELECT secret_hash, enabled FROM agents WHERE agent_id = ?`).get(agentId) as
@@ -726,9 +736,10 @@ export class AuthStore {
     const remoteJson = input.remoteMeta ? JSON.stringify(input.remoteMeta) : null;
     const existing = this.db.prepare(`SELECT skill_id FROM skill_registry WHERE skill_id = ?`).get(input.skillId);
     if (existing) {
-      // Never resets `enabled`; refreshes metadata (incl. remote schema).
-      this.db.prepare(`UPDATE skill_registry SET title = ?, category = ?, source = ?, description = ?, sort_order = ?, remote_meta = COALESCE(?, remote_meta), updated_at = ? WHERE skill_id = ?`)
-        .run(input.title, input.category, input.source ?? "local", input.description ?? null, input.sortOrder ?? 0, remoteJson, nowIso(), input.skillId);
+      // Never resets `enabled` or `sort_order` (console toggles + drag order
+      // survive restarts); refreshes title/category/desc/remote schema only.
+      this.db.prepare(`UPDATE skill_registry SET title = ?, category = ?, source = ?, description = ?, remote_meta = COALESCE(?, remote_meta), updated_at = ? WHERE skill_id = ?`)
+        .run(input.title, input.category, input.source ?? "local", input.description ?? null, remoteJson, nowIso(), input.skillId);
       return;
     }
     this.db.prepare(`
@@ -789,6 +800,13 @@ export class AuthStore {
     const prefix = `rmcp__${serverId}__`;
     const res = this.db.prepare(`DELETE FROM skill_registry WHERE source = 'remote-mcp' AND skill_id LIKE ?`).run(`${prefix}%`);
     return Number(res.changes);
+  }
+
+  /** Persist display order: assign sort_order = position for the given ids. */
+  reorderSkills(orderedIds: string[]): void {
+    const stmt = this.db.prepare(`UPDATE skill_registry SET sort_order = ?, updated_at = ? WHERE skill_id = ?`);
+    const now = nowIso();
+    orderedIds.forEach((id, i) => stmt.run(i, now, id));
   }
 
   setSkillAllowWrite(skillId: string, allow: boolean): boolean {

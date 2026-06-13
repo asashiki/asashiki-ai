@@ -30,11 +30,10 @@ function consentPage(opts: {
   const agentOptions = opts.agents
     .map((a) => `<option value="${htmlEscape(a.agentId)}">${htmlEscape(a.displayName)} (${htmlEscape(a.agentId)})</option>`)
     .join("");
-  const scopes = opts.scope.split(/\s+/).filter(Boolean)
-    .map((s) => `<code>${htmlEscape(s)}</code>`).join(" ");
   const errBlock = opts.error
     ? `<div class="err">${htmlEscape(opts.error)}</div>`
     : "";
+  // 樱羽 Sakura 配色（与控制台 SPA 同一套 token，light/dark 随系统）。
   return `<!doctype html>
 <html lang="zh">
 <head>
@@ -42,51 +41,95 @@ function consentPage(opts: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Asashiki MCP 授权</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, -apple-system, "PingFang SC", sans-serif; margin: 0; padding: 2rem 1rem;
-         background: #f6f7f9; color: #1a1a1a; display: flex; justify-content: center; }
-  @media (prefers-color-scheme: dark) { body { background: #16181c; color: #e8e8e8; } .card { background: #22252b !important; } input, select { background: #1a1c20 !important; color: #e8e8e8 !important; border-color: #3a3d44 !important; } }
-  .card { background: #fff; max-width: 420px; width: 100%; border-radius: 14px; padding: 1.6rem 1.6rem 1.8rem;
-          box-shadow: 0 6px 24px rgba(0,0,0,.08); }
-  h1 { font-size: 1.2rem; margin: 0 0 .3rem; }
-  .sub { color: #888; font-size: .85rem; margin: 0 0 1.2rem; }
-  .row { margin: 0 0 1rem; }
-  .label { font-size: .8rem; color: #666; margin-bottom: .3rem; }
-  .val { font-weight: 600; word-break: break-all; }
-  code { background: rgba(127,127,127,.15); padding: .1rem .35rem; border-radius: 5px; font-size: .8rem; }
-  label.field { display: block; font-size: .8rem; color: #666; margin: 0 0 .35rem; }
-  input, select { width: 100%; box-sizing: border-box; padding: .6rem .65rem; border: 1px solid #d8dade;
-                  border-radius: 9px; font-size: .95rem; }
-  .actions { display: flex; gap: .6rem; margin-top: 1.4rem; }
-  button { flex: 1; padding: .7rem; border: none; border-radius: 9px; font-size: .95rem; font-weight: 600; cursor: pointer; }
-  .approve { background: #2f6df6; color: #fff; }
-  .deny { background: rgba(127,127,127,.18); color: inherit; }
-  .err { background: #ffe2e2; color: #a40000; padding: .6rem .7rem; border-radius: 9px; font-size: .85rem; margin-bottom: 1rem; }
+  :root {
+    color-scheme: light dark;
+    --bg:#fff2f9; --surface:#ffffff; --border:#f3dce9; --border-strong:#e9c4d9;
+    --text:#3a3340; --text-2:#8a7d8f; --text-3:#b8aabb;
+    --accent:#e96ba8; --accent-2:#8b8bef; --accent-soft:#fdd9ec; --on-accent:#fff;
+    --err:#d04848; --err-soft:#f7d5d5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#17141d; --surface:#1e1a24; --border:#332a3a; --border-strong:#46394f;
+      --text:#f0e9f2; --text-2:#a796ad; --text-3:#6f6178;
+      --accent:#f288c0; --accent-2:#a3a3f7; --accent-soft:#3c2535; --on-accent:#241420;
+      --err:#e36868; --err-soft:#3a1f1f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { font-family:"PingFang SC","Hiragino Sans","Noto Sans SC",system-ui,sans-serif;
+         margin:0; min-height:100vh; padding:2.4rem 1rem; color:var(--text);
+         background:
+           radial-gradient(1200px 500px at 50% -10%, var(--accent-soft), transparent 60%),
+           var(--bg);
+         display:flex; align-items:flex-start; justify-content:center; }
+  .card { background:var(--surface); max-width:430px; width:100%; border-radius:18px;
+          border:1px solid var(--border); padding:1.9rem 1.8rem 2rem;
+          box-shadow:0 18px 50px -20px rgba(233,107,168,.35); }
+  .brand { display:flex; align-items:center; gap:.6rem; margin-bottom:1.3rem; }
+  .mark { width:30px; height:30px; border-radius:9px; transform:skewX(-12deg);
+          background:linear-gradient(135deg,var(--accent),var(--accent-2)); }
+  .brand b { font-size:.95rem; letter-spacing:.02em; }
+  .brand span { color:var(--text-3); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; }
+  h1 { font-size:1.28rem; margin:0 0 .4rem; line-height:1.3; }
+  .sub { color:var(--text-2); font-size:.88rem; margin:0 0 1.4rem; line-height:1.6; }
+  .panel { background:var(--bg); border:1px solid var(--border); border-radius:12px;
+           padding:.5rem .9rem; margin-bottom:1.4rem; }
+  .panel .row { display:flex; justify-content:space-between; align-items:center; gap:1rem;
+                padding:.55rem 0; border-bottom:1px solid var(--border); }
+  .panel .row:last-child { border-bottom:none; }
+  .panel .k { color:var(--text-2); font-size:.82rem; flex:0 0 auto; }
+  .panel .v { font-weight:600; font-size:.88rem; text-align:right; word-break:break-all; }
+  label.field { display:block; font-size:.8rem; color:var(--text-2); margin:0 0 .4rem; font-weight:500; }
+  .ctrl { margin-bottom:1.1rem; }
+  input, select { width:100%; padding:.7rem .75rem; border:1px solid var(--border-strong);
+                  border-radius:10px; font-size:.95rem; background:var(--surface); color:var(--text);
+                  font-family:inherit; outline:none; transition:border-color .15s, box-shadow .15s; }
+  input:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .actions { display:flex; gap:.7rem; margin-top:1.5rem; }
+  button { flex:1; padding:.8rem; border:none; border-radius:11px; font-size:.95rem; font-weight:600;
+           cursor:pointer; font-family:inherit; transition:filter .15s, background .15s; }
+  .approve { background:linear-gradient(135deg,var(--accent),var(--accent-2)); color:var(--on-accent); }
+  .approve:hover { filter:brightness(1.05); }
+  .deny { background:transparent; color:var(--text-2); border:1px solid var(--border-strong); }
+  .deny:hover { background:var(--bg); }
+  .err { background:var(--err-soft); color:var(--err); padding:.65rem .8rem; border-radius:10px;
+         font-size:.85rem; margin-bottom:1.1rem; }
+  .foot { margin-top:1.3rem; color:var(--text-3); font-size:.74rem; line-height:1.6; text-align:center; }
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>授权访问 Asashiki MCP</h1>
-    <p class="sub">一个 MCP 客户端请求连接你的共享技能中枢。</p>
+    <div class="brand">
+      <div class="mark"></div>
+      <div>
+        <b>Asashiki MCP</b><br>
+        <span>connection request</span>
+      </div>
+    </div>
+    <h1>把外部 AI 接入你的技能中枢</h1>
+    <p class="sub">下面这个客户端想以你的某个 Agent 身份连接。确认后，它就能调用你在控制台开放给该 Agent 的技能。</p>
     ${errBlock}
-    <div class="row"><div class="label">客户端</div><div class="val">${htmlEscape(opts.clientName)}</div></div>
-    <div class="row"><div class="label">回调地址</div><div class="val">${htmlEscape(opts.redirectHost)}</div></div>
-    <div class="row"><div class="label">请求权限</div><div>${scopes || "<code>tools</code>"}</div></div>
+    <div class="panel">
+      <div class="row"><span class="k">客户端</span><span class="v">${htmlEscape(opts.clientName)}</span></div>
+      <div class="row"><span class="k">回调地址</span><span class="v">${htmlEscape(opts.redirectHost)}</span></div>
+    </div>
     <form method="POST" action="/oauth/approve">
       <input type="hidden" name="pending" value="${htmlEscape(opts.pendingId)}">
-      <div class="row">
+      <div class="ctrl">
         <label class="field" for="agent_id">以哪个 Agent 身份接入</label>
         <select id="agent_id" name="agent_id" required>${agentOptions}</select>
       </div>
-      <div class="row">
-        <label class="field" for="agent_secret">Agent 密钥</label>
+      <div class="ctrl">
+        <label class="field" for="agent_secret">该 Agent 的密钥</label>
         <input id="agent_secret" name="agent_secret" type="password" autocomplete="off" required placeholder="amcp_sk_...">
       </div>
       <div class="actions">
         <button class="deny" type="submit" name="decision" value="deny">拒绝</button>
-        <button class="approve" type="submit" name="decision" value="approve">授权</button>
+        <button class="approve" type="submit" name="decision" value="approve">确认授权</button>
       </div>
     </form>
+    <div class="foot">技能可见性可随时在控制台「技能」页按 Agent 调整。</div>
   </div>
 </body>
 </html>`;

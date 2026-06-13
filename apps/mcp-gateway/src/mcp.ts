@@ -20,12 +20,8 @@ const mcpToolIds = [
   "location_current",
   "location_history",
   "weather_current",
-  "okx_balance",
-  "okx_positions",
-  "okx_assets",
   "steam_recent_games",
   "steam_profile",
-  "voice_bubble",
   "x_search"
 ] as const;
 
@@ -107,24 +103,6 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     readOnlyHint: true
   },
   {
-    id: "okx_balance",
-    title: "OKX Trading Balance",
-    description: "OKX trading account equity and holdings.",
-    readOnlyHint: true
-  },
-  {
-    id: "okx_positions",
-    title: "OKX Open Positions",
-    description: "OKX open futures/perpetual positions.",
-    readOnlyHint: true
-  },
-  {
-    id: "okx_assets",
-    title: "OKX Funding Assets",
-    description: "OKX funding account asset balances.",
-    readOnlyHint: true
-  },
-  {
     id: "steam_recent_games",
     title: "Steam Recent Games",
     description: "Steam games played in the last 2 weeks.",
@@ -135,12 +113,6 @@ export const mcpToolCatalog = mcpToolCatalogSchema.parse([
     title: "Steam Profile",
     description: "Steam profile, online status, current game.",
     readOnlyHint: true
-  },
-  {
-    id: "voice_bubble",
-    title: "Voice Message",
-    description: "Reply with a playable Anna-voice message bubble in the chat.",
-    readOnlyHint: false
   },
   {
     id: "x_search",
@@ -156,41 +128,27 @@ function tool(id: McpToolId) {
   return entry;
 }
 
-// Skill registry metadata: FUNCTION category + initial enabled state.
-// Seeded into the gateway's skill_registry on startup (re-seed refreshes the
-// category, so renames here propagate); the console can later flip `enabled`.
-// The category is the auto "function" axis shown as a tag in the console —
-// the use-scenario axis is the user-edited skill groups, kept separate.
-export const skillCategory = {
-  sense: "sense",         // 实时感知：当下状态快照（设备/位置/天气/健康摘要）
-  history: "history",     // 历史回溯：时间线/区间/历史记录查询
-  action: "action",       // 动作输出：产生副作用（写日记/发语音泡）
-  search: "search",       // 对外检索（x_search + 未来社交检索）
-  finance: "finance",     // 资产/理财
-  personal: "personal",   // 个人档案（steam 等账号画像）
-  meta: "meta"            // 运维/元信息
-} as const;
-
-export const skillMeta: Record<McpToolId, { category: string; initialEnabled: boolean }> = {
-  connector_status: { category: skillCategory.meta, initialEnabled: true },
-  diary_write: { category: skillCategory.action, initialEnabled: true },
-  time_log_lookup: { category: skillCategory.history, initialEnabled: true },
-  time_log_range: { category: skillCategory.history, initialEnabled: true },
-  device_status: { category: skillCategory.sense, initialEnabled: true },
-  device_activity_summary: { category: skillCategory.history, initialEnabled: true },
-  device_timeline: { category: skillCategory.history, initialEnabled: true },
-  health_summary: { category: skillCategory.sense, initialEnabled: true },
-  health_records: { category: skillCategory.history, initialEnabled: true },
-  location_current: { category: skillCategory.sense, initialEnabled: true },
-  location_history: { category: skillCategory.history, initialEnabled: true },
-  weather_current: { category: skillCategory.sense, initialEnabled: true },
-  okx_balance: { category: skillCategory.finance, initialEnabled: false },
-  okx_positions: { category: skillCategory.finance, initialEnabled: false },
-  okx_assets: { category: skillCategory.finance, initialEnabled: false },
-  steam_recent_games: { category: skillCategory.personal, initialEnabled: false },
-  steam_profile: { category: skillCategory.personal, initialEnabled: false },
-  voice_bubble: { category: skillCategory.action, initialEnabled: true },
-  x_search: { category: skillCategory.search, initialEnabled: true }
+// Skill registry metadata: just the initial enabled state. The only axis the
+// gateway can reliably know is local vs remote (set by `source` at seed time),
+// so `category` is a flat "local" for built-ins — auto function-categorization
+// was removed (it was guesswork). Use-scenario grouping is the user-edited
+// skill groups, kept separate.
+export const skillMeta: Record<McpToolId, { initialEnabled: boolean }> = {
+  connector_status: { initialEnabled: true },
+  diary_write: { initialEnabled: true },
+  time_log_lookup: { initialEnabled: true },
+  time_log_range: { initialEnabled: true },
+  device_status: { initialEnabled: true },
+  device_activity_summary: { initialEnabled: true },
+  device_timeline: { initialEnabled: true },
+  health_summary: { initialEnabled: true },
+  health_records: { initialEnabled: true },
+  location_current: { initialEnabled: true },
+  location_history: { initialEnabled: true },
+  weather_current: { initialEnabled: true },
+  steam_recent_games: { initialEnabled: false },
+  steam_profile: { initialEnabled: false },
+  x_search: { initialEnabled: true }
 };
 
 // Builds an MCP server instance per request. Tool registrations live in

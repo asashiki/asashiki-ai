@@ -28,11 +28,13 @@ export const dragLeave = (e: React.DragEvent) => {
 
 export const dragDrop = (kind: string, handler: (id: string) => void) =>
   (e: React.DragEvent) => {
-    e.preventDefault();
-    e.currentTarget.classList.remove("drag-over");
     const raw = e.dataTransfer.getData("application/x-asashiki");
-    if (!raw) return;
-    const [k, id] = raw.split(":");
+    const [k, id] = (raw ?? "").split(":");
+    // 只有真正匹配本 drop 区的类型时才消费 + 阻止冒泡，否则放行给外层
+    // （否则技能行的 drop 会冒泡到 group-body 被追加到末尾，组内排序失效）。
     if (k !== kind || !id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove("drag-over");
     handler(id);
   };

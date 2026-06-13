@@ -571,60 +571,6 @@ export const diaryWriteResultSchema = z.object({
 
 export type DiaryWriteResult = z.infer<typeof diaryWriteResultSchema>;
 
-// ── OKX ───────────────────────────────────────────────────────────────────
-
-export const okxHoldingSchema = z.object({
-  currency: z.string(),
-  balance: z.number(),
-  available: z.number(),
-  frozen: z.number(),
-  valueUsd: z.number().nullable()
-});
-
-export const okxAccountBalanceSchema = z.object({
-  fetchedAt: z.string(),
-  totalEquityUsd: z.number(),
-  holdings: z.array(okxHoldingSchema)
-});
-
-export type OkxAccountBalance = z.infer<typeof okxAccountBalanceSchema>;
-
-export const okxPositionSchema = z.object({
-  instrument: z.string(),
-  type: z.string(),
-  side: z.string(),
-  size: z.number(),
-  entryPrice: z.number(),
-  markPrice: z.number(),
-  unrealizedPnl: z.number(),
-  unrealizedPnlRatio: z.number(),
-  leverage: z.number(),
-  margin: z.number(),
-  currency: z.string(),
-  updatedAt: z.string()
-});
-
-export const okxPositionsSchema = z.object({
-  fetchedAt: z.string(),
-  positions: z.array(okxPositionSchema)
-});
-
-export type OkxPositions = z.infer<typeof okxPositionsSchema>;
-
-export const okxAssetSchema = z.object({
-  currency: z.string(),
-  balance: z.number(),
-  available: z.number(),
-  frozen: z.number()
-});
-
-export const okxAssetBalancesSchema = z.object({
-  fetchedAt: z.string(),
-  assets: z.array(okxAssetSchema)
-});
-
-export type OkxAssetBalances = z.infer<typeof okxAssetBalancesSchema>;
-
 // ─────────────────────────────────────────────────────────────────────────
 
 export const diaryDeleteResultSchema = z.object({
@@ -890,34 +836,6 @@ export const voiceMessageSchema = z.object({
   playedAt: z.string().nullable()
 });
 export type VoiceMessage = z.infer<typeof voiceMessageSchema>;
-
-// ─── Voice bubble (AI → in-chat playable voice message, claude.ai / ChatGPT) ──
-// Renders a Telegram-style voice bubble inside the conversation via MCP Apps UI.
-// Synthesized with the same Anna voice as the device-push path.
-export const voiceBubbleInputSchema = z.object({
-  text: z
-    .string()
-    .min(1)
-    .max(300)
-    .describe("Spoken text, 1-300 chars. Chinese works best. One or two short sentences are ideal."),
-  senderName: z
-    .string()
-    .min(1)
-    .max(60)
-    .optional()
-    .describe("Display name shown on the bubble. Defaults to 'Anna'.")
-});
-export type VoiceBubbleInput = z.infer<typeof voiceBubbleInputSchema>;
-
-export const voiceBubbleResultSchema = z.object({
-  audioUrl: z.string().url(),
-  mimeType: z.string(),
-  text: z.string(),
-  senderName: z.string(),
-  durationMs: z.number().int().nonnegative().nullable(),
-  createdAt: z.string()
-});
-export type VoiceBubbleResult = z.infer<typeof voiceBubbleResultSchema>;
 
 export const voiceMessagesPendingSchema = z.object({
   fetchedAt: z.string(),

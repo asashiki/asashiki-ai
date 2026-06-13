@@ -3,9 +3,6 @@ import {
   locationCurrentSchema,
   locationHistorySchema,
   locationHistoryQueryInputSchema,
-  okxAccountBalanceSchema,
-  okxAssetBalancesSchema,
-  okxPositionsSchema,
   steamRecentGamesSchema,
   steamPlayerSummarySchema,
   connectorSchema,
@@ -16,8 +13,6 @@ import {
   deviceTimelineSchema,
   diaryWriteInputSchema,
   diaryWriteResultSchema,
-  voiceBubbleInputSchema,
-  voiceBubbleResultSchema,
   healthRecordsQueryInputSchema,
   healthRecordsQuerySchema,
   healthSummarySchema,
@@ -147,23 +142,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       return diaryWriteResultSchema.parse(await response.json());
     },
 
-    async getOkxBalance() {
-      const res = await fetch(resolveUrl(baseUrl, "/api/okx/balance"));
-      if (!res.ok) throw new Error("OKX balance unavailable.");
-      return okxAccountBalanceSchema.parse(await res.json());
-    },
-
-    async getOkxPositions() {
-      const res = await fetch(resolveUrl(baseUrl, "/api/okx/positions"));
-      if (!res.ok) throw new Error("OKX positions unavailable.");
-      return okxPositionsSchema.parse(await res.json());
-    },
-
-    async getOkxAssets() {
-      const res = await fetch(resolveUrl(baseUrl, "/api/okx/assets"));
-      if (!res.ok) throw new Error("OKX asset balances unavailable.");
-      return okxAssetBalancesSchema.parse(await res.json());
-    },
 
     async getLocationCurrent() {
       const res = await fetch(resolveUrl(baseUrl, "/api/devices/location/current"));
@@ -285,24 +263,6 @@ export function createCoreApiClient(baseUrl: string, adminToken?: string) {
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
       return body as { content?: unknown[]; structuredContent?: unknown; isError?: boolean };
-    },
-
-    async createVoiceBubble(input: unknown) {
-      if (!adminToken) throw new Error("Admin token not configured for voice bubble.");
-      const params = voiceBubbleInputSchema.parse(input);
-      const res = await fetch(resolveUrl(baseUrl, "/api/voice-bubble"), {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${adminToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(params)
-      });
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      if (!res.ok) {
-        throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
-      }
-      return voiceBubbleResultSchema.parse(body);
     },
 
     async searchX(input: unknown) {

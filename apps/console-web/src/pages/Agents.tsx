@@ -24,6 +24,11 @@ export default function AgentsPage() {
     await Agents.setEnabled(a.agentId, v);
     agentsQ.reload();
   };
+  const remove = async (a: Agent) => {
+    if (!confirm(`删除 Agent「${a.displayName}」？\n它的密钥、令牌和技能可见性配置都会一并清除，使用该身份的客户端将立即断开。`)) return;
+    await Agents.remove(a.agentId);
+    agentsQ.reload();
+  };
   const createAgent = async (agentId: string, displayName?: string) => {
     const r = await Agents.create(agentId.trim(), displayName?.trim() || undefined);
     if (r.secret) setSecret({ agentId: r.agentId, secret: r.secret });
@@ -63,8 +68,9 @@ export default function AgentsPage() {
             <div className="actions">
               <button className="btn ghost sm" onClick={() => regen(a)}>轮换密钥</button>
               {a.enabled
-                ? <button className="btn danger sm" onClick={() => setEnabled(a, false)}>禁用</button>
+                ? <button className="btn secondary sm" onClick={() => setEnabled(a, false)}>禁用</button>
                 : <button className="btn secondary sm" onClick={() => setEnabled(a, true)}>启用</button>}
+              <button className="btn danger sm" onClick={() => remove(a)}>删除</button>
             </div>
           </article>
         ))}

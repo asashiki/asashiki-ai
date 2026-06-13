@@ -102,33 +102,6 @@ export async function runMcpToolSmokeTest(
           executedAt
         });
       }
-      case "okx_balance": {
-        const output = await client.getOkxBalance();
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: `OKX 账户权益 $${output.totalEquityUsd.toFixed(2)}，${output.holdings.length} 个币种持仓。`,
-          preview: output.holdings[0] ? `${output.holdings[0].currency}: $${(output.holdings[0].valueUsd ?? 0).toFixed(2)}` : "无持仓",
-          executedAt
-        });
-      }
-      case "okx_positions": {
-        const output = await client.getOkxPositions();
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: output.positions.length === 0 ? "当前无持仓。" : `${output.positions.length} 个持仓。`,
-          preview: output.positions[0]?.instrument ?? "无",
-          executedAt
-        });
-      }
-      case "okx_assets": {
-        const output = await client.getOkxAssets();
-        return mcpToolTestResultSchema.parse({
-          toolId, ok: true,
-          summary: `资金账户 ${output.assets.length} 个资产。`,
-          preview: output.assets[0] ? `${output.assets[0].currency}: ${output.assets[0].balance}` : "空",
-          executedAt
-        });
-      }
       case "diary_write":
         return mcpToolTestResultSchema.parse({
           toolId,
@@ -142,14 +115,6 @@ export async function runMcpToolSmokeTest(
           toolId,
           ok: true,
           summary: "x_search smoke test 跳过（避免烧 xAI 配额，每次调用 ~30s）。",
-          preview: null,
-          executedAt
-        });
-      case "voice_bubble":
-        return mcpToolTestResultSchema.parse({
-          toolId,
-          ok: true,
-          summary: "voice_bubble smoke test 跳过（避免烧 MiniMax TTS 配额）。",
           preview: null,
           executedAt
         });

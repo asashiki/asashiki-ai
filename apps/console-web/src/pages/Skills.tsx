@@ -8,7 +8,15 @@ import VisibilityDropdown from "@/components/VisibilityDropdown";
 import Modal from "@/components/Modal";
 import { dragStart, dragEnd, dragOver, dragLeave, dragDrop } from "@/lib/drag";
 
-type Filter = "all" | "enabled" | "disabled" | "write" | "remote";
+// 可多选的过滤标签。两个维度：启用态(已启用/未启用) + 来源(本地/远程)。
+// 同维度内 OR，跨维度 AND；全不选 = 显示全部。
+type FilterTag = "enabled" | "disabled" | "local" | "remote";
+const FILTER_TAGS: { key: FilterTag; label: string }[] = [
+  { key: "enabled", label: "已启用" },
+  { key: "disabled", label: "未启用" },
+  { key: "local", label: "本地" },
+  { key: "remote", label: "远程" },
+];
 
 export default function SkillsPage() {
   const skillsQ = useAsync(() => Skills.list(), []);
@@ -34,8 +42,15 @@ export default function SkillsPage() {
   }, [groupsQ.data]);
 
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filters, setFilters] = useState<Set<FilterTag>>(new Set());
   const [mgmtOpen, setMgmtOpen] = useState(false);
+
+  const toggleFilter = (t: FilterTag) =>
+    setFilters(prev => {
+      const next = new Set(prev);
+      next.has(t) ? next.delete(t) : next.add(t);
+      return next;
+    });
 
   const skills = skillsQ.data?.skills ?? [];
   const agents = agentsQ.data?.agents ?? [];
@@ -96,12 +111,19 @@ export default function SkillsPage() {
     skillsQ.reload();
   };
 
-  // 应用搜索 / 过滤
+  // 应用搜索 / 过滤（多选：同维度 OR，跨维度 AND）
   const matches = (s: Skill): boolean => {
-    if (filter === "enabled"  && !s.enabled) return false;
-    if (filter === "disabled" &&  s.enabled) return false;
-    if (filter === "write"    && !s.allowWrite) return false;
-    if (filter === "remote"   && s.source !== "remote-mcp") return false;
+    const wantEnable = filters.has("enabled") || filters.has("disabled");
+    if (wantEnable) {
+      const ok = (filters.has("enabled") && s.enabled) || (filters.has("disabled") && !s.enabled);
+      if (!ok) return false;
+    }
+    const wantSource = filters.has("local") || filters.has("remote");
+    if (wantSource) {
+      const isRemote = s.source === "remote-mcp";
+      const ok = (filters.has("remote") && isRemote) || (filters.has("local") && !isRemote);
+      if (!ok) return false;
+    }
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       if (![s.title, s.skillId, s.description ?? ""].some(t => t.toLowerCase().includes(q))) return false;
@@ -140,7 +162,7 @@ export default function SkillsPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
     return { groups: view, remoteGroups, ungrouped: unGroup };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, skills, query, filter, skillById]);
+  }, [groups, skills, query, filters, skillById]);
 
   // ---- 拖拽：技能跨组 / 跨位置 ----
   const moveSkill = (skillId: string, toGroupId: string | null, toIndex: number) => {
@@ -165,6 +187,25 @@ export default function SkillsPage() {
       void SkillGroups.save(after);
       return after;
     });
+  };
+
+  const isGrouped = (id: string) => groups.some(g => g.skillIds.includes(id));
+
+  // 未归类区域内的上下排序：持久化到后端 sort_order（未归类顺序就来自它）。
+  const reorderUngrouped = (draggedId: string, beforeId: string | null) => {
+    const ids = groupedView.ungrouped.map(s => s.skillId);
+    const from = ids.indexOf(draggedId);
+    if (from < 0) return;
+    ids.splice(from, 1);
+    const to = beforeId ? ids.indexOf(beforeId) : ids.length;
+    ids.splice(to < 0 ? ids.length : to, 0, draggedId);
+    void Skills.reorder(ids).then(() => skillsQ.reload());
+  };
+
+  // 拖到未归类：分组内的技能→拉出归为未归类；本就未归类的→在区内排序。
+  const dropToUngrouped = (id: string, beforeId: string | null) => {
+    if (isGrouped(id)) moveSkill(id, null, 0);
+    else reorderUngrouped(id, beforeId);
   };
 
   // 拖拽：分组本身的排序
@@ -222,10 +263,10 @@ export default function SkillsPage() {
         <input className="search" placeholder="搜索技能 / id / 描述…"
           value={query} onChange={e => setQuery(e.target.value)} />
         <div className="filter-chips">
-          {(["all","enabled","disabled","write","remote"] as Filter[]).map(f => (
-            <button key={f} className={`chip ${filter === f ? "active" : ""}`}
-              onClick={() => setFilter(f)}>
-              {{all:"全部",enabled:"已启用",disabled:"未启用",write:"可写",remote:"远程"}[f]}
+          {FILTER_TAGS.map(({ key, label }) => (
+            <button key={key} className={`chip ${filters.has(key) ? "active" : ""}`}
+              onClick={() => toggleFilter(key)}>
+              {label}
             </button>
           ))}
         </div>
@@ -306,11 +347,11 @@ export default function SkillsPage() {
       {/* 未归类 */}
       <section className="group un"
         onDragOver={dragOver("skill")} onDragLeave={dragLeave}
-        onDrop={dragDrop("skill", (id) => moveSkill(id, null, 0))}>
+        onDrop={dragDrop("skill", (id) => dropToUngrouped(id, null))}>
         <header className="group-head">
           <span className="handle" aria-hidden style={{ opacity: .3 }}>⋮⋮</span>
           <span className="nm" style={{ fontStyle: "italic", color: "var(--text-2)" }}>未归类</span>
-          <span className="count">{groupedView.ungrouped.length} 项 · 新加入的技能默认落在这里</span>
+          <span className="count">{groupedView.ungrouped.length} 项 · 新加入的技能默认落在这里 · 可上下拖动排序</span>
         </header>
         <div className="group-body">
           {groupedView.ungrouped.length === 0 && (
@@ -325,7 +366,7 @@ export default function SkillsPage() {
               onChangeVis={(next) => updateVisForSkill(s.skillId, next)}
               onToggleEnable={(v) => toggleSkill(s.skillId, v)}
               onToggleWrite ={(v) => toggleWrite(s.skillId, v)}
-              onDropAbove={() => { /* 未归类区域不允许局部插入 */ }}
+              onDropAbove={(id) => dropToUngrouped(id, s.skillId)}
             />
           ))}
         </div>
@@ -342,23 +383,6 @@ export default function SkillsPage() {
 }
 
 // ============================================================================
-
-// 功能标签（后端 category 自动赋予；与用户自编的场景分组互不干扰）。
-// remote 不单独显示——「远程」来源标签已经表达了。
-const CATEGORY_LABELS: Record<string, string> = {
-  sense: "实时感知",
-  history: "历史回溯",
-  action: "动作",
-  search: "检索",
-  finance: "资产",
-  personal: "个人",
-  meta: "系统",
-};
-
-function categoryLabel(skill: Skill): string | null {
-  if (skill.category === "remote") return null;
-  return CATEGORY_LABELS[skill.category] ?? skill.category;
-}
 
 function SkillRow({
   skill, agents, visibleSet, onChangeVis, onToggleEnable, onToggleWrite, onDropAbove,
@@ -393,10 +417,7 @@ function SkillRow({
 
       <div className="tags">
         {skill.source === "remote-mcp" ? <span className="tag b">远程</span> : <span className="tag line">本地</span>}
-        {categoryLabel(skill) && <span className="tag">{categoryLabel(skill)}</span>}
-        {skill.allowWrite || (skill.source === "remote-mcp" && skill.readOnly === false)
-          ? <span className="tag a">可写</span>
-          : <span className="tag line">只读</span>}
+        {/* 远程写工具仍需「需开许可」提示——这是功能性安全闸，不是凭空的功能分类 */}
         {skill.source === "remote-mcp" && skill.readOnly === false && !skill.allowWrite && (
           <span className="tag warn">需开许可</span>
         )}
