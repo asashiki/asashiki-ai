@@ -135,26 +135,30 @@ test("console: admin login + session lifecycle", (t) => {
 });
 
 // ── remote-mcp skills ──
-test("remote: seed with meta, descriptors, allow-write, prune by server", (t) => {
+test("remote: seed with meta, descriptors (enable = write opt-in), prune by server", (t) => {
   const s = freshStore(t);
   s.seedSkill({
     skillId: "rmcp__srv__echo", title: "srv: echo", category: "remote", source: "remote-mcp", enabled: true,
+    readOnly: true,
     remoteMeta: { serverId: "srv", toolName: "echo", inputSchema: { type: "object" }, readOnly: true }
   });
   s.seedSkill({
     skillId: "rmcp__srv__write", title: "srv: write", category: "remote", source: "remote-mcp", enabled: true,
+    readOnly: false,
     remoteMeta: { serverId: "srv", toolName: "write", inputSchema: {}, readOnly: false }
   });
   const enabled = s.getEnabledSkillIds();
   const descs = s.getRemoteDescriptors(enabled);
   assert.equal(descs.length, 2);
+  // The per-tool allow_write sub-toggle is gone: enabling a remote skill IS the
+  // write opt-in, so every enabled descriptor forwards allowWrite=true.
   const writeDesc = descs.find((d) => d.toolName === "write")!;
-  assert.equal(writeDesc.allowWrite, false, "write tool defaults to no allowWrite");
-  s.setSkillAllowWrite("rmcp__srv__write", true);
-  assert.equal(s.getRemoteDescriptors(s.getEnabledSkillIds()).find((d) => d.toolName === "write")!.allowWrite, true);
-  // readOnly surfaced in listSkills
+  assert.equal(writeDesc.allowWrite, true, "enabled write tool forwards allowWrite");
+  // readOnly surfaced in listSkills (from the dedicated column)
   const listed = s.listSkills().find((x) => x.skillId === "rmcp__srv__echo")!;
   assert.equal(listed.readOnly, true);
+  const listedWrite = s.listSkills().find((x) => x.skillId === "rmcp__srv__write")!;
+  assert.equal(listedWrite.readOnly, false);
   // prune removes the server's skills
   const removed = s.pruneRemoteSkillsForServer("srv");
   assert.equal(removed, 2);

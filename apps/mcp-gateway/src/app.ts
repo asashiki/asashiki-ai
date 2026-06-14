@@ -168,7 +168,8 @@ export async function createMcpGatewayApp(options?: {
         category: "local",
         source: "local",
         enabled: meta?.initialEnabled ?? true,
-        description: t.description
+        description: t.description,
+        readOnly: t.readOnlyHint
       });
     }
     // Drop local skills that no longer exist in the catalog (self-heal).
@@ -195,8 +196,12 @@ export async function createMcpGatewayApp(options?: {
               title: `${s.name}: ${tool.title ?? tool.name}`,
               category: "remote",
               source: "remote-mcp",
-              enabled: true,
+              // Read tools auto-enable (add server = use it); write tools start
+              // OFF so a remote can't mutate anything until the operator flips
+              // its toggle. seedSkill never resets enabled on existing rows.
+              enabled: tool.readOnlyHint !== false,
               description: tool.description ?? null,
+              readOnly: tool.readOnlyHint,
               remoteMeta: { serverId: s.id, serverName: s.name, toolName: tool.name, inputSchema: tool.inputSchema ?? {}, readOnly: tool.readOnlyHint, toolMeta: tool.meta ?? null }
             });
             seeded += 1;

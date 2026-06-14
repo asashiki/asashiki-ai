@@ -88,6 +88,19 @@ export function registerConsoleApi(
     const { id } = request.params as { id: string };
     const b = (request.body ?? {}) as { enabled?: unknown };
     if (typeof b.enabled !== "boolean") { reply.code(400); return { error: "enabled (boolean) required" }; }
+    // A remote skill can't be enabled while its server still needs OAuth — there's
+    // no token to call it with, so it would only fail at invocation time.
+    if (b.enabled && id.startsWith("rmcp__")) {
+      const serverId = id.slice("rmcp__".length).split("__")[0];
+      try {
+        const servers = await client.listRemoteMcpServers();
+        const s = servers.find((x) => x.id === serverId);
+        if (s && (s.needsAuth || (s.authMode === "oauth" && !s.oauthAuthorized))) {
+          reply.code(409);
+          return { error: `远程服务「${s.name}」尚未完成授权，请先在「远程接入」页面点击去授权后再启用。` };
+        }
+      } catch { /* best-effort: if status check fails, don't block */ }
+    }
     const ok = store.setSkillEnabled(id, b.enabled);
     if (!ok) { reply.code(404); return { error: `unknown skill: ${id}` }; }
     store.audit({ action: "skill_toggle", success: true, detail: `${id}=${b.enabled}` });
@@ -223,8 +236,7 @@ export function registerConsoleApi(
         enabled: true
       });
       const r = config.rediscoverRemote ? await config.rediscoverRemote() : { seeded: 0 };
-      // 加了服务器就是要用它的工具——把该服务器的技能全部启用（包括之前残留的
-      // disabled 行），写工具仍受 allow_write 闸保护。
+      // 加了服务器就是要用它的读工具——自动启用；写工具默认保持关闭，需手动开。
       store.enableRemoteSkillsForServer(id);
       store.audit({ action: "remote_server_add", success: true, detail: id });
       // 探活一次：401/OAuth 要求 → 前端立即引导去授权

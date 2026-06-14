@@ -241,6 +241,7 @@ code, .mono { font-family: var(--mono); }
 .sw.sm { width: 32px; height: 18px; }
 .sw.sm::after { width: 12px; height: 12px; top: 3px; left: 3px; }
 .sw.sm.on::after { transform: translateX(14px); }
+.sw.disabled { opacity: .4; cursor: not-allowed; }
 
 /* ========== KPI ========== */
 .kpi-grid {

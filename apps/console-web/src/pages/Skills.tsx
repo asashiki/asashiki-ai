@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Skills, Agents, SkillGroups } from "@/lib/api";
+import { Skills, Agents, SkillGroups, Remote } from "@/lib/api";
 import { useAsync } from "@/hooks/useAsync";
 import type { Skill, Agent, SkillGroup, AgentVisibility } from "@/types/api";
 import PageHead from "@/components/PageHead";
@@ -22,6 +22,16 @@ export default function SkillsPage() {
   const skillsQ = useAsync(() => Skills.list(), []);
   const agentsQ = useAsync(() => Agents.list(), []);
   const groupsQ = useAsync(() => SkillGroups.list(), []);
+  const serversQ = useAsync(() => Remote.list(), []);
+
+  // 远程服务里「尚未完成授权」的 serverId 集合：这些服务下的技能不可启用。
+  const authPendingServers = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of serversQ.data?.servers ?? []) {
+      if (s.needsAuth || (s.authMode === "oauth" && !s.oauthAuthorized)) set.add(s.id);
+    }
+    return set;
+  }, [serversQ.data]);
 
   // 每个 agent 的可见性（白名单）—— 用于反推「这个技能对哪些 agent 可见」
   const [visMap, setVisMap] = useState<Record<string, AgentVisibility>>({});
@@ -103,11 +113,12 @@ export default function SkillsPage() {
   };
 
   const toggleSkill = async (id: string, enabled: boolean) => {
-    await Skills.setEnabled(id, enabled);
-    skillsQ.reload();
-  };
-  const toggleWrite = async (id: string, allow: boolean) => {
-    await Skills.setAllowWrite(id, allow);
+    try {
+      await Skills.setEnabled(id, enabled);
+    } catch (e) {
+      // 后端会在「远程服务未授权」时拒绝启用 → 提示用户先去授权。
+      alert(e instanceof Error ? e.message : "操作失败");
+    }
     skillsQ.reload();
   };
 
@@ -308,7 +319,7 @@ export default function SkillsPage() {
                 visibleSet={visForSkill(s.skillId)}
                 onChangeVis={(next) => updateVisForSkill(s.skillId, next)}
                 onToggleEnable={(v) => toggleSkill(s.skillId, v)}
-                onToggleWrite ={(v) => toggleWrite(s.skillId, v)}
+                authPending={authPendingServers}
                 onDropAbove={(id) => moveSkill(id, g.id, si)}
               />
             ))}
@@ -336,7 +347,7 @@ export default function SkillsPage() {
                 visibleSet={visForSkill(s.skillId)}
                 onChangeVis={(next) => updateVisForSkill(s.skillId, next)}
                 onToggleEnable={(v) => toggleSkill(s.skillId, v)}
-                onToggleWrite ={(v) => toggleWrite(s.skillId, v)}
+                authPending={authPendingServers}
                 onDropAbove={() => { /* 虚拟分组内不支持局部插入 */ }}
               />
             ))}
@@ -365,7 +376,7 @@ export default function SkillsPage() {
               visibleSet={visForSkill(s.skillId)}
               onChangeVis={(next) => updateVisForSkill(s.skillId, next)}
               onToggleEnable={(v) => toggleSkill(s.skillId, v)}
-              onToggleWrite ={(v) => toggleWrite(s.skillId, v)}
+              authPending={authPendingServers}
               onDropAbove={(id) => dropToUngrouped(id, s.skillId)}
             />
           ))}
@@ -385,17 +396,18 @@ export default function SkillsPage() {
 // ============================================================================
 
 function SkillRow({
-  skill, agents, visibleSet, onChangeVis, onToggleEnable, onToggleWrite, onDropAbove,
+  skill, agents, visibleSet, onChangeVis, onToggleEnable, onDropAbove, authPending,
 }: {
   skill: Skill;
   agents: Agent[];
   visibleSet: Set<string>;
   onChangeVis: (next: Set<string>) => void;
   onToggleEnable: (v: boolean) => void;
-  onToggleWrite: (v: boolean) => void;
   onDropAbove: (id: string) => void;
+  authPending: Set<string>;
 }) {
-  const isWritable = skill.allowWrite || (skill.source === "remote-mcp" && skill.readOnly === false);
+  // 远程服务尚未授权 → 不能启用（没 token，启用了也只会在调用时失败）。
+  const needsAuth = skill.source === "remote-mcp" && !!skill.serverId && authPending.has(skill.serverId);
 
   return (
     <div className="skill"
@@ -417,10 +429,10 @@ function SkillRow({
 
       <div className="tags">
         {skill.source === "remote-mcp" ? <span className="tag b">远程</span> : <span className="tag line">本地</span>}
-        {/* 远程写工具仍需「需开许可」提示——这是功能性安全闸，不是凭空的功能分类 */}
-        {skill.source === "remote-mcp" && skill.readOnly === false && !skill.allowWrite && (
-          <span className="tag warn">需开许可</span>
-        )}
+        {/* 读/写分类：系统能从工具的 readOnlyHint 判断（本地/远程通用）。写技能更敏感，默认关闭。 */}
+        {skill.readOnly === true && <span className="tag line">可读</span>}
+        {skill.readOnly === false && <span className="tag warn">写入</span>}
+        {needsAuth && <span className="tag err">需授权</span>}
       </div>
 
       <VisibilityDropdown
@@ -431,10 +443,14 @@ function SkillRow({
       />
 
       <div className="sw-cell">
-        <Toggle on={skill.enabled} onChange={onToggleEnable} />
-        {isWritable && skill.source === "remote-mcp" && (
-          <div style={{ marginTop: 6 }} title="允许写入（远程工具）">
-            <Toggle on={skill.allowWrite} onChange={onToggleWrite} small />
+        <Toggle
+          on={skill.enabled}
+          onChange={onToggleEnable}
+          disabled={needsAuth && !skill.enabled}
+        />
+        {needsAuth && !skill.enabled && (
+          <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-3)" }} title="远程服务尚未授权">
+            需先授权
           </div>
         )}
       </div>

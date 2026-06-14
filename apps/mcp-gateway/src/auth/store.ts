@@ -207,6 +207,9 @@ export class AuthStore {
     try { this.db.exec(`ALTER TABLE skill_registry ADD COLUMN remote_meta TEXT`); } catch { /* exists */ }
     // Per-tool write opt-in for remote write tools (forwarded as allowWrite).
     try { this.db.exec(`ALTER TABLE skill_registry ADD COLUMN allow_write INTEGER NOT NULL DEFAULT 0`); } catch { /* exists */ }
+    // read/write classification (1=read-only, 0=write, NULL=unknown), so the
+    // console can tag a skill 可读/写入 for local + remote uniformly.
+    try { this.db.exec(`ALTER TABLE skill_registry ADD COLUMN read_only INTEGER`); } catch { /* exists */ }
   }
 
   // ── Agents ────────────────────────────────────────────────────────────────
@@ -745,21 +748,25 @@ export class AuthStore {
     enabled: boolean;
     description?: string | null;
     sortOrder?: number;
+    /** read-only? true=read, false=write, undefined=unknown. */
+    readOnly?: boolean;
     remoteMeta?: { serverId: string; serverName?: string; toolName: string; inputSchema: Record<string, unknown>; readOnly?: boolean; toolMeta?: Record<string, unknown> | null } | null;
   }): void {
     const remoteJson = input.remoteMeta ? JSON.stringify(input.remoteMeta) : null;
+    const readOnly = input.readOnly === undefined ? null : (input.readOnly ? 1 : 0);
     const existing = this.db.prepare(`SELECT skill_id FROM skill_registry WHERE skill_id = ?`).get(input.skillId);
     if (existing) {
       // Never resets `enabled` or `sort_order` (console toggles + drag order
-      // survive restarts); refreshes title/category/desc/remote schema only.
-      this.db.prepare(`UPDATE skill_registry SET title = ?, category = ?, source = ?, description = ?, remote_meta = COALESCE(?, remote_meta), updated_at = ? WHERE skill_id = ?`)
-        .run(input.title, input.category, input.source ?? "local", input.description ?? null, remoteJson, nowIso(), input.skillId);
+      // survive restarts); refreshes title/category/desc/remote schema +
+      // read/write classification only.
+      this.db.prepare(`UPDATE skill_registry SET title = ?, category = ?, source = ?, description = ?, remote_meta = COALESCE(?, remote_meta), read_only = COALESCE(?, read_only), updated_at = ? WHERE skill_id = ?`)
+        .run(input.title, input.category, input.source ?? "local", input.description ?? null, remoteJson, readOnly, nowIso(), input.skillId);
       return;
     }
     this.db.prepare(`
-      INSERT INTO skill_registry (skill_id, title, category, source, enabled, description, sort_order, remote_meta, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(input.skillId, input.title, input.category, input.source ?? "local", input.enabled ? 1 : 0, input.description ?? null, input.sortOrder ?? 0, remoteJson, nowIso());
+      INSERT INTO skill_registry (skill_id, title, category, source, enabled, description, sort_order, remote_meta, read_only, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(input.skillId, input.title, input.category, input.source ?? "local", input.enabled ? 1 : 0, input.description ?? null, input.sortOrder ?? 0, remoteJson, readOnly, nowIso());
   }
 
   /** Remote-tool descriptors for the given enabled+visible skill ids. */
@@ -772,7 +779,11 @@ export class AuthStore {
       if (!ids.has(id)) continue;
       try {
         const m = JSON.parse(String(r.remote_meta)) as { serverId: string; toolName: string; inputSchema: Record<string, unknown>; toolMeta?: Record<string, unknown> | null };
-        out.push({ skillId: id, title: String(r.title), description: r.description ? String(r.description) : null, serverId: m.serverId, toolName: m.toolName, inputSchema: m.inputSchema ?? {}, allowWrite: Number(r.allow_write) === 1, meta: m.toolMeta ?? null });
+        // Enabling a remote skill IS the write opt-in now (the per-tool
+        // allow_write sub-toggle was removed): any enabled tool is allowed to
+        // run, write or not. getRemoteDescriptors is only ever called with the
+        // enabled+visible id set, so allowWrite is unconditionally true here.
+        out.push({ skillId: id, title: String(r.title), description: r.description ? String(r.description) : null, serverId: m.serverId, toolName: m.toolName, inputSchema: m.inputSchema ?? {}, allowWrite: true, meta: m.toolMeta ?? null });
       } catch { /* skip malformed */ }
     }
     return out;
@@ -781,13 +792,16 @@ export class AuthStore {
   listSkills(): Array<{ skillId: string; title: string; category: string; source: string; enabled: boolean; description: string | null; sortOrder: number; updatedAt: string; allowWrite: boolean; readOnly: boolean | null; serverId: string | null; serverName: string | null }> {
     const rows = this.db.prepare(`SELECT * FROM skill_registry ORDER BY sort_order, skill_id`).all() as Record<string, unknown>[];
     return rows.map((r) => {
-      let readOnly: boolean | null = null;
+      // read/write: prefer the dedicated column (set for local + remote);
+      // fall back to legacy remote_meta.readOnly for rows seeded before the
+      // column existed.
+      let readOnly: boolean | null = r.read_only === null || r.read_only === undefined ? null : Number(r.read_only) === 1;
       let serverId: string | null = null;
       let serverName: string | null = null;
       if (r.remote_meta) {
         try {
           const m = JSON.parse(String(r.remote_meta));
-          if (typeof m.readOnly === "boolean") readOnly = m.readOnly;
+          if (readOnly === null && typeof m.readOnly === "boolean") readOnly = m.readOnly;
           if (typeof m.serverId === "string") serverId = m.serverId;
           if (typeof m.serverName === "string") serverName = m.serverName;
         } catch { /* ignore */ }
@@ -847,9 +861,13 @@ export class AuthStore {
     return Number(res.changes);
   }
 
-  /** Enable all of a remote server's tools (called when the server is added). */
+  /**
+   * Enable a remote server's READ tools when it's added (add server = use it).
+   * Write tools (read_only = 0) are left OFF so a remote can't mutate anything
+   * until the operator explicitly flips its toggle.
+   */
   enableRemoteSkillsForServer(serverId: string): number {
-    const res = this.db.prepare(`UPDATE skill_registry SET enabled = 1, updated_at = ? WHERE source = 'remote-mcp' AND skill_id LIKE ?`)
+    const res = this.db.prepare(`UPDATE skill_registry SET enabled = 1, updated_at = ? WHERE source = 'remote-mcp' AND skill_id LIKE ? AND (read_only IS NULL OR read_only = 1)`)
       .run(nowIso(), `rmcp__${serverId}__%`);
     return Number(res.changes);
   }
